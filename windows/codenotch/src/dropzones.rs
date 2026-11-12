@@ -24,6 +24,9 @@ pub struct Zones {
     pub depth: f64,
     pub length: f64,
     pub target: String,
+    /// Where the target zone's centre sits along its edge, 0 to 1 of the work area: it follows the
+    /// pointer, so the notch can be set anywhere along an edge and not only in its middle
+    pub along: f64,
 }
 
 /// Built on the spot rather than kept hidden for the life of the app, which is what the settings
@@ -67,6 +70,20 @@ pub fn show(app: &AppHandle, screen: &crate::Screen, zones: &Zones) {
         }
         Err(e) => crate::applog(&format!("drop zones: {e}")),
     }
+}
+
+/// The pointer carried the notch onto another screen: the overlay follows it there. Moved and resized
+/// in place, in physical pixels as `show` pins it, rather than destroyed and rebuilt mid-carry.
+pub fn move_to(app: &AppHandle, screen: &crate::Screen, zones: &Zones) {
+    let Some(w) = app.get_webview_window(LABEL) else {
+        show(app, screen, zones);
+        return;
+    };
+    *CURRENT.lock().unwrap() = Some(zones.clone());
+    let (ax, ay, aw, ah) = screen.area();
+    let _ = w.set_position(tauri::PhysicalPosition::new(ax, ay));
+    let _ = w.set_size(tauri::PhysicalSize::new(aw.max(1) as u32, ah.max(1) as u32));
+    let _ = w.emit_to(LABEL, "zones", zones);
 }
 
 pub fn retarget(app: &AppHandle, zones: &Zones) {

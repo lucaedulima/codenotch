@@ -3,91 +3,113 @@
 <head>
 <meta charset="UTF-8">
 <style>
-  /* Visual reference: upstream docs/specs/2026-08-28-usage-notch-design.md, reproduced for Windows */
+  /* ---- Codenotch, Liquid Glass edition ----------------------------------------------------------
+     The notch no longer welds itself to the screen edge: it is a glass capsule floating a few pixels
+     off it, the way Apple's floating bars do (a bar glued to the corner reads as paint, not glass).
+     Material, from LIQUID-GLASS.md at the repo root, adapted to the one thing this window cannot do:
+     backdrop-filter only ever sees this page, never the desktop behind the window, so there is no
+     lens here. What sells the glass instead is the rest of the recipe — a tinted body that carries the
+     legibility, a specular rim that is bright on two opposite corners, an inner edge that is lit on top
+     and shaded underneath, a reflection on the corners, and a two-layer shadow.
+     Dense content (the hover card) is almost opaque: text on see-through glass tires the eye.
+     Nothing animates on its own: a continuous animation in this always-on-top window slows the whole
+     compositor (see the arc rules below). */
   *{box-sizing:border-box} /* content-box padding once pushed the card past the window's left edge */
   html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden;user-select:none}
-  body{font-family:"Segoe UI",system-ui,sans-serif;color:#fff}
+  body{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:#fff;-webkit-font-smoothing:antialiased}
   #root{position:relative;width:100%;height:100%}
 
-  /* ---- Glass ---------------------------------------------------------------
-     Liquid Glass, as far as a transparent WebView2 window can take it: backdrop-filter only ever
-     blurs this page, never the desktop behind the window, so the glass is simulated rather than
-     sampled. A smoked translucent body, a hairline edge, a specular highlight on the side facing
-     the light and a soft shadow; three thicknesses (Apple's "clear / regular / thick"), chosen in
-     Settings and set on <body data-glass>. Nothing here animates on its own: a continuous animation
-     in this always-on-top window slows the whole compositor (see the arc rules below). */
   :root{
-    --glass-a:.72;
-    --glass:rgba(16,16,20,var(--glass-a));
-    --glass-card:rgba(14,14,18,calc(var(--glass-a) + .16));
-    --edge:rgba(255,255,255,.15);
-    --hi:rgba(255,255,255,.20);
-    --spec-at:0% 50%;
-    --track:rgba(255,255,255,.12);
-    --well:rgba(255,255,255,.055);
-    --peek:6px;
+    --gap:10px;            /* the capsule floats this far off the screen edge */
+    --pill-w:64px;         /* its thickness; the ends are fully round */
+    --peek:6px;            /* what stays on screen when it tucks away */
+    --glass-a:.66;         /* body tint of the capsule: Settings → Glass picks it */
+    --card-a:.90;          /* the card is content, so it stays nearly opaque */
+    --glass:rgba(24,24,30,var(--glass-a));
+    --card-bg:rgba(28,28,34,var(--card-a));
+    --label-1:rgba(255,255,255,.96);
+    --label-2:rgba(235,235,245,.64);
+    --label-3:rgba(235,235,245,.40);
+    --fill-1:rgba(255,255,255,.11);
+    --fill-2:rgba(255,255,255,.07);
+    --fill-3:rgba(255,255,255,.045);
+    --sep:rgba(255,255,255,.09);
+    /* thickness: light comes in at the top-left and leaves weaker at the bottom */
+    --edge:
+      inset 0 1px 0 rgba(255,255,255,.26),
+      inset 1px 0 0 rgba(255,255,255,.08),
+      inset -1px 0 0 rgba(255,255,255,.06),
+      inset 0 -1px 0 rgba(255,255,255,.10),
+      inset 0 10px 22px -12px rgba(255,255,255,.16),
+      inset 0 -12px 22px -14px rgba(0,0,0,.45);
+    /* refractive rim: bright on two opposite corners, almost nothing in between */
+    --rim:linear-gradient(135deg,
+      rgba(255,255,255,.55) 0%, rgba(255,255,255,.14) 22%, rgba(255,255,255,.03) 45%,
+      rgba(255,255,255,.10) 62%, rgba(255,255,255,.40) 100%);
+    /* corner reflections: wide and low (a high peak turns the glass milky) */
+    --quinas:
+      radial-gradient(90% 55% at 0% 0%, rgba(255,255,255,.15), rgba(255,255,255,.04) 45%, transparent 70%),
+      radial-gradient(80% 45% at 100% 100%, rgba(255,255,255,.09), transparent 70%);
+    /* "water mirror": the gloss content surfaces get instead of a lens */
+    --espelho:linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.02) 22%, transparent 42%);
+    --shadow-pill:0 1px 2px rgba(0,0,0,.30), 0 10px 28px rgba(0,0,0,.36);
+    --shadow-card:0 3px 8px rgba(0,0,0,.28), 0 18px 40px rgba(0,0,0,.42);
+    --ease-out:cubic-bezier(.32,.72,0,1);
+    --ease-spring:cubic-bezier(.34,1.4,.64,1);
   }
-  body[data-glass="clear"]{--glass-a:.46;--edge:rgba(255,255,255,.22);--hi:rgba(255,255,255,.28)}
-  body[data-glass="solid"]{--glass-a:.93;--edge:rgba(255,255,255,.11);--hi:rgba(255,255,255,.14)}
-  body[data-edge="left"]{--spec-at:100% 50%}
-  body[data-edge="top"]{--spec-at:50% 100%}
-  body[data-edge="bottom"]{--spec-at:50% 0%}
+  body[data-glass="clear"]{--glass-a:.46;--card-a:.84}
+  body[data-glass="solid"]{--glass-a:.92;--card-a:.97}
   /* Windows' transparency effects switch off: the glass goes solid, as Reduce Transparency does */
-  @media (prefers-reduced-transparency: reduce){ :root,body[data-glass]{--glass-a:.97} }
-  @media (prefers-contrast: more){ :root,body[data-glass]{--glass-a:1;--edge:rgba(255,255,255,.6)} }
+  @media (prefers-reduced-transparency: reduce){ :root,body[data-glass]{--glass-a:.97;--card-a:.98} }
+  @media (prefers-contrast: more){
+    :root,body[data-glass]{--glass-a:1;--card-a:1;--label-2:rgba(255,255,255,.86);--label-3:rgba(255,255,255,.7);
+      --rim:linear-gradient(rgba(255,255,255,.7),rgba(255,255,255,.7))}
+  }
 
-  /* The pill on the right edge */
+  /* The rim is a 1 px border painted with a gradient and cut out with a mask; the corner reflection
+     adds light (screen), it never paints white over the tint. */
+  #pill::before,#card::before,.h-disc::before{
+    content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--rim);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+    pointer-events:none;z-index:2;
+  }
+  #pill::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--quinas);mix-blend-mode:screen;pointer-events:none;z-index:0}
+
+  /* ---- The capsule, on the right-hand edge (the default; the other edges follow below) ---- */
   #pill{
-    position:absolute;right:0;top:50%;transform:translateY(-50%);
-    width:70px;padding:18px 0;
-    /* The highlight sits on the side away from the screen edge, so it never meets a fillet and leaves no seam */
-    background:radial-gradient(130% 55% at var(--spec-at), rgba(255,255,255,.13), rgba(255,255,255,0) 70%), var(--glass);
-    border-radius:20px 0 0 20px;
-    /* Stays visible on dark wallpapers: a thin stroke plus a faint glow, the only outline when black sits on black */
-    border:1px solid var(--edge);border-right:none;
-    box-shadow:inset 1px 0 0 var(--hi), 0 6px 22px rgba(0,0,0,.22);
-    display:flex;flex-direction:column;align-items:center;gap:14px;cursor:pointer;
+    position:absolute;right:var(--gap);top:50%;transform:translateY(-50%);isolation:isolate;
+    width:var(--pill-w);padding:12px 0 9px;border-radius:calc(var(--pill-w) / 2);
+    background:var(--espelho),var(--glass);
+    box-shadow:var(--edge),var(--shadow-pill);
+    display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
     /* Auto-hide slides the pill, never the window: a transform is the one thing the compositor
        animates without repainting the page */
-    transition:transform .24s cubic-bezier(.2,.8,.2,1), border-color .24s ease;
+    transition:transform .34s var(--ease-out), box-shadow .24s ease;
   }
-  /* Fillets: the concave arcs between the pill's top/bottom and the screen edge (the inverse rounded
-     corner in the upstream design frame). An R×R black square hugs the edge and a radial gradient
-     punches out the circle of radius R centred on its outer corner; what remains is the arc. A 1 px
-     ring in the stroke colour joins the pill's own stroke (the outline cue on black wallpapers). */
-  #pill::before,#pill::after{
-    content:"";position:absolute;right:0;width:var(--fillet);height:var(--fillet);pointer-events:none;
-  }
-  /* The Mac's flare radius (38.7 pt against the same 70 pt body), so the settings orb that nests in
-     this pocket can be the Mac's own size */
-  #pill{--fillet:38.7px}
-  #pill::before{
-    top:calc(-1 * var(--fillet)); /* covers the 1 px stroke along the pill's top edge so there is no seam */
-    background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px));
-  }
-  #pill::after{
-    bottom:calc(-1 * var(--fillet));
-    background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px));
-  }
-  .cell{display:flex;flex-direction:column;align-items:center;gap:6px}
-  .ringwrap{position:relative;width:56px;height:56px;transition:transform .3s cubic-bezier(.34,1.4,.64,1)}
-  .cell:hover .ringwrap{transform:scale(1.045)}
-  .ringwrap.pressed,.cell:hover .ringwrap.pressed{transform:scale(.93)}
+  #pill > *{position:relative;z-index:1}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:3px;width:54px;padding:4px 0 5px;border-radius:20px;transition:background .2s}
+  .cell:hover{background:var(--fill-3)}
+  .ringwrap{position:relative;width:48px;height:48px;transition:transform .3s var(--ease-spring)}
+  .cell:hover .ringwrap{transform:scale(1.05)}
+  .ringwrap.pressed,.cell:hover .ringwrap.pressed{transform:scale(.92)}
   .ringwrap > svg.ring,.ringwrap > svg.reading,.ringwrap > svg.activity{position:absolute;inset:0;overflow:visible} /* pins only the ring itself; an inline logo svg must not match this or it ends up in the top-left corner */
+  .ringwrap > svg.reading{filter:drop-shadow(0 0 2.5px rgba(255,255,255,.16))}
+  /* The glyph sits in a small glass bead, lit from the top-left, inside the activity arc's radius */
   .glyph{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    font-size:20px;font-weight:700;color:#e8e8ea;letter-spacing:-.5px;
+    position:absolute;inset:11.5px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:var(--label-1);letter-spacing:-.3px;
+    background:radial-gradient(circle at 34% 26%, rgba(255,255,255,.22), rgba(255,255,255,.06) 58%, rgba(255,255,255,.03));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 2px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.25);
   }
-  .glyph.small{font-size:15px}
+  .glyph.small{font-size:10px}
   /* Glyphs: mark = the provider's own brand mark (monochrome, shown white); appicon = the installed app's icon (colour, rounded and shrunk) */
   .glyph img,.glyph svg{display:block;pointer-events:none;user-select:none}
-  .glyph .mark{display:block;width:26px;height:26px;color:#e8e8ea}
-  .glyph .mark svg{width:26px;height:26px;fill:currentColor} /* inline SVG follows currentColor, so it dims together with the cell */
-  .glyph img.png{width:26px;height:26px;object-fit:contain}
-  .glyph img.appicon{width:30px;height:30px;border-radius:8px;object-fit:cover}
-  .c-head .mark{display:inline-block;width:16px;height:16px;color:#e8e8ea;margin-right:2px}
-  .c-head .mark svg{width:16px;height:16px;fill:currentColor}
-  .pct{font-size:15px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+  .glyph .mark{display:block;width:15px;height:15px;color:var(--label-1)}
+  .glyph .mark svg{width:15px;height:15px;fill:currentColor} /* inline SVG follows currentColor, so it dims together with the cell */
+  .glyph img.png{width:15px;height:15px;object-fit:contain}
+  .glyph img.appicon{width:19px;height:19px;border-radius:5px;object-fit:cover}
+  .pct{font-size:12.5px;font-weight:600;color:var(--label-1);font-variant-numeric:tabular-nums;letter-spacing:-.1px;line-height:16px}
   .dim{opacity:.55}
   /* A stale reading dims the reading only. The track, the week and the glyph are all saying the same
      old thing, but whether an agent is running right now is current either way, so the activity arc
@@ -104,141 +126,142 @@
   /* Windows' Animation effects switch: a still arc and a solid ring, as on the Mac under Reduce Motion */
   @media (prefers-reduced-motion: reduce){.arc-spin,.arc-pulse{animation:none}.ringwrap{transition:none}}
 
-  /* Hover card, shown to the left of the pill */
-  #card{
-    position:absolute;left:10px;right:100px;top:50%;transform:translateY(-50%);
-    /* Anchored on both sides = fluid width: whatever the WebView's real logical width, the card cannot
-       extend past the window's left edge (a fixed max-width got clipped when the DPI disagreed).
-       The 246 cap matches the upstream spec. */
-    max-width:246px;margin-left:auto;border-radius:18px;padding:16px;
-    background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%), var(--glass-card);
-    border:1px solid var(--edge);
-    box-shadow:inset 0 1px 0 var(--hi), 0 14px 40px rgba(0,0,0,.38);
-    overflow-wrap:anywhere;min-width:0;
-    max-height:calc(100% - 16px);overflow:hidden; /* never taller than the window, however short it is */
-    display:none;
-  }
-  #card.show{display:block}
-  /* The tail, its point on the hovered ring: the Mac's curved wedge (TooltipTail), whose shoulders
-     leave the card tangent to its edge so the two read as one shape. An element of its own rather
-     than ::after, so the card's overflow cannot clip it and it can be reported as hot. It spans the
-     whole gap, its tip tucked 1 px under the pill's edge so the two meet. */
-  #tail{
-    position:absolute;right:69px;width:32px;height:36px;background:var(--glass-card);display:none;
-    clip-path:path('M0 0C0 9 18.56 13.68 32 18C18.56 22.32 0 27 0 36Z');
-  }
-  #card.show + #tail{display:block}
-  .c-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-  .c-title{font-size:14px;font-weight:700}
-  .c-sub{font-size:11px;color:#808080;margin-bottom:10px}
-  .win{margin-top:10px}
-  .w-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;flex-wrap:wrap;column-gap:8px}
-  .w-label{color:#e8e8ea;font-weight:600;white-space:nowrap}
-  .w-reset{color:#808080;font-size:11px;white-space:nowrap;margin-left:auto} /* wrap as a whole when it does not fit; never break inside a word */
-  .w-track{height:4px;border-radius:2px;background:var(--track);margin:6px 0 4px;overflow:hidden}
-  .w-fill{height:100%;border-radius:2px}
-  .w-used{font-size:11px;color:#808080}
-  .g-head{font-size:12px;font-weight:700;color:#e8e8ea;margin-top:12px}
-  .g-box{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0 10px 8px;margin-top:6px}
-  .c-note{font-size:12px;color:#c8c8c8;line-height:1.5;margin-top:6px}
-  .c-sessions{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
-  .s-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#b0b0b3;padding:2px 0}
-  .s-dot{width:6px;height:6px;border-radius:3px;flex:0 0 auto}
-  .s-more{font-size:11px;color:#808080;padding:2px 0}
-
-  /* ---- The other three edges -------------------------------------------------
-     The rules above draw the right-hand edge, the original layout and still the default. Each block
-     below mirrors or rotates that one for another edge. Two things stay in JavaScript because they
-     depend on measurement: where the card and the tail sit along the pill (`placeCard`), and, on the
-     flat edges, how far down or up the card clears a pill whose thickness follows its contents.
-
-     The fillets follow one rule on every edge: the radial gradient is centred on the corner of the
-     R×R square *diagonally opposite* the corner where the pill meets the screen, so what stays black
-     is the concave arc between the two. */
-
-  /* Left: the right-hand layout mirrored. */
-  body[data-edge="left"] #pill{right:auto;left:0;border-radius:0 20px 20px 0;border-right:1px solid var(--edge);border-left:none}
-  body[data-edge="left"] #pill::before,body[data-edge="left"] #pill::after{right:auto;left:0}
-  body[data-edge="left"] #pill::before{background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  body[data-edge="left"] #pill::after{background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  body[data-edge="left"] #card{left:100px;right:10px;margin-left:0;margin-right:auto}
-  body[data-edge="left"] #tail{right:auto;left:69px;clip-path:path('M32 0C32 9 13.44 13.68 0 18C13.44 22.32 32 27 32 36Z')}
-
-  /* Top and bottom: the pill lies flat, so it is a row and its thickness comes from the cells rather
-     than a fixed 70 px column. The card is centred under (or over) the hovered ring by `placeCard`. */
-  body[data-edge="top"] #pill,body[data-edge="bottom"] #pill{
-    right:auto;left:50%;top:auto;transform:translateX(-50%);
-    flex-direction:row;width:auto;height:auto;padding:12px 18px;
-  }
-  body[data-edge="top"] #pill::before,body[data-edge="top"] #pill::after,
-  body[data-edge="bottom"] #pill::before,body[data-edge="bottom"] #pill::after{right:auto;top:auto;bottom:auto}
-  body[data-edge="top"] #pill{top:0;border-radius:0 0 20px 20px;border-top:none}
-  body[data-edge="top"] #pill::before{top:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  body[data-edge="top"] #pill::after{top:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  body[data-edge="bottom"] #pill{bottom:0;border-radius:20px 20px 0 0;border-bottom:none}
-  body[data-edge="bottom"] #pill::before{bottom:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  body[data-edge="bottom"] #pill::after{bottom:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
-  /* A fixed width here, not the fluid one the upright edges use: `placeCard` measures the card to
-     centre it, and a shrink-to-fit width would change as it moves. 246 is the upstream cap either way. */
-  body[data-edge="top"] #card,body[data-edge="bottom"] #card{
-    left:8px;right:auto;top:0;transform:none;margin-left:0;
-    width:246px;max-height:calc(100% - 150px);
-  }
-  body[data-edge="top"] #tail,body[data-edge="bottom"] #tail{right:auto;width:36px;height:32px}
-  body[data-edge="top"] #tail{clip-path:path('M0 32C9 32 13.68 13.44 18 0C22.32 13.44 27 32 36 32Z')}
-  body[data-edge="bottom"] #tail{clip-path:path('M0 0C9 0 13.68 18.56 18 32C22.32 18.56 27 0 36 0Z')}
-
-  /* The two handles, one off each end of the pill, as on the Mac (SettingsOrb and MoveHandle):
-     settings past the far fillet, move past the near one. At rest each is a quarter arc tucked into
-     that fillet's pocket, concentric with it and a gap inside; under the pointer the same circle
-     fills in and takes its glyph. The Mac's measures, unscaled: arc radius 28.5, stroke 6.8, disc
-     46.6, glyph 21. `placeHandles` puts each box's centre on its fillet's centre. */
-  .handle{position:absolute;width:57px;height:57px;display:none;--arc:270deg}
-  .handle.placed{display:block}
-  .handle.hover{cursor:pointer}
-  .handle > *{position:absolute;left:50%;top:50%;pointer-events:none;transition:opacity .2s,transform .36s cubic-bezier(.34,1.3,.64,1)}
-  .h-rest{width:72px;height:72px;margin:-36px 0 0 -36px;overflow:visible;transform:rotate(var(--arc)) scale(1)}
-  .h-disc{width:46.6px;height:46.6px;margin:-23.3px 0 0 -23.3px;border-radius:50%;background:var(--glass);border:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--hi);opacity:0;transform:scale(1.1)}
-  .h-glyph{width:21px;height:21px;margin:-10.5px 0 0 -10.5px;fill:#e8e8ea;opacity:0;
-    transform:rotate(calc(var(--spins,0) * 360deg - 60deg)) scale(.5);transition:opacity .2s,transform .55s cubic-bezier(.34,1.2,.64,1)}
-  .handle.hover .h-rest{opacity:0;transform:rotate(var(--arc)) scale(.86)}
-  .handle.hover .h-disc{opacity:1;transform:scale(1)}
-  .handle.hover .h-glyph{opacity:1;transform:rotate(calc(var(--spins,0) * 360deg)) scale(1)}
-  /* Carrying: the disc goes dashed and the hand stops turning — it is being held now, not offered */
-  #move.armed .h-disc{border:2px dashed #e8e8ea;background:rgba(0,0,0,.72)}
-  /* The quarter that faces the fillet: up and outward past the far end on the right, and the same two
-     directions mirrored along the stack at the near end */
-  body[data-edge="left"] #orb,body[data-edge="top"] #orb{--arc:180deg}
-  body[data-edge="bottom"] #orb{--arc:90deg}
-  #move{--arc:0deg}
-  body[data-edge="left"] #move{--arc:90deg}
-  body[data-edge="top"] #move{--arc:270deg}
-  @media (prefers-reduced-motion: reduce){.handle > *{transition:none}}
-
-  /* ---- Auto-hide ------------------------------------------------------------
-     Tucked, the pill slides into the screen edge until only --peek of it shows; the pointer on that
-     strip brings it back. The fillets and handles go with it. The transforms repeat the base ones
-     because a transform is one property, not a stack. */
-  body[data-edge="left"] #pill{box-shadow:inset -1px 0 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
-  body[data-edge="top"] #pill{box-shadow:inset 0 -1px 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
-  body[data-edge="bottom"] #pill{box-shadow:inset 0 1px 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
-  body.tucked #pill{transform:translateY(-50%) translateX(calc(100% - var(--peek)));border-color:rgba(255,255,255,.34)}
-  body.tucked[data-edge="left"] #pill{transform:translateY(-50%) translateX(calc(-100% + var(--peek)))}
-  body.tucked[data-edge="top"] #pill{transform:translateX(-50%) translateY(calc(-100% + var(--peek)))}
-  body.tucked[data-edge="bottom"] #pill{transform:translateX(-50%) translateY(calc(100% - var(--peek)))}
-  body.tucked .handle{opacity:0;pointer-events:none}
-  .handle{transition:opacity .2s}
-  @media (prefers-reduced-motion: reduce){#pill{transition:none}}
+  /* A hairline between the readings and the padlock */
+  .divider{display:block;width:24px;height:1px;background:var(--sep);margin:2px 0 1px}
 
   /* The padlock at the end of the pill: shut = fixed in place, open = auto-hide */
-  .lock{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;
-    color:rgba(255,255,255,.42);transition:color .2s,background .2s,transform .2s cubic-bezier(.34,1.4,.64,1)}
-  .lock:hover{color:#fff;background:rgba(255,255,255,.10);transform:scale(1.08)}
+  .lock{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:13px;
+    color:var(--label-3);transition:color .2s,background .2s,transform .2s var(--ease-spring)}
+  .lock:hover{color:#fff;background:var(--fill-1);transform:scale(1.08)}
   .lock:active{transform:scale(.92)}
   .lock svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .lock .open{display:none}
   body.autohide .lock .shut{display:none}
   body.autohide .lock .open{display:block}
+
+  /* ---- The hover card -------------------------------------------------------------------------
+     Floats beside the capsule with a clear gap and no tail: the hovered cell lights up instead.
+     #tail stays as an invisible bridge over the gap, so the pointer crossing it is still "inside". */
+  #card{
+    position:absolute;left:10px;right:calc(var(--gap) + var(--pill-w) + 12px);top:50%;transform:translateY(-50%);
+    /* Anchored on both sides = fluid width: whatever the WebView's real logical width, the card cannot
+       extend past the window's left edge (a fixed max-width got clipped when the DPI disagreed). */
+    max-width:264px;margin-left:auto;border-radius:22px;padding:14px 14px 10px;isolation:isolate;
+    background:var(--espelho),var(--card-bg);
+    box-shadow:var(--edge),var(--shadow-card);
+    color:var(--label-1);
+    overflow-wrap:anywhere;min-width:0;
+    max-height:calc(100% - 16px);overflow:hidden; /* never taller than the window, however short it is */
+    display:none;
+    --in-x:8px;--in-y:0px;
+  }
+  /* It arrives sliding out of the capsule and growing, never blinking in */
+  #card.show{display:block;animation:surface-in .22s var(--ease-out)}
+  @keyframes surface-in{from{opacity:0;transform:translate(var(--in-x),var(--in-y)) scale(.97)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){#card.show{animation:none}}
+  #tail{position:absolute;right:calc(var(--gap) + var(--pill-w) - 2px);width:16px;height:40px;background:transparent;display:none}
+  #card.show + #tail{display:block}
+
+  .c-head{display:flex;align-items:center;gap:10px;padding:0 2px 10px}
+  .c-icon{width:32px;height:32px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;
+    background:radial-gradient(circle at 30% 22%, rgba(255,255,255,.18), rgba(255,255,255,.05) 62%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 2px rgba(0,0,0,.3)}
+  .c-icon .mark{display:block;width:18px;height:18px;color:var(--label-1)}
+  .c-icon .mark svg{width:18px;height:18px;fill:currentColor;display:block}
+  .c-icon img{display:block}
+  .c-id{flex:1;min-width:0}
+  .c-title{font-size:14.5px;font-weight:650;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .c-sub{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--label-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .c-dot{width:6px;height:6px;border-radius:50%;flex:none}
+  .c-big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.6px;line-height:1;flex:none}
+  .c-big small{font-size:12px;font-weight:650;margin-left:1px;opacity:.85;letter-spacing:0}
+
+  .win{padding:9px 2px 8px;border-top:1px solid var(--sep)}
+  .w-row{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;column-gap:8px}
+  .w-label{font-size:12.5px;font-weight:600;color:var(--label-1);white-space:nowrap}
+  .w-reset{color:var(--label-2);font-size:11px;white-space:nowrap;margin-left:auto} /* wrap as a whole when it does not fit; never break inside a word */
+  /* The bar: a recessed track, a fill that glows faintly in its own colour, and the pace mark —
+     where the reading would be if the allowance were spent evenly across the window */
+  .w-track{position:relative;height:6px;border-radius:3px;background:var(--fill-1);margin:7px 0 5px;box-shadow:inset 0 1px 1.5px rgba(0,0,0,.35)}
+  .w-fill{height:100%;border-radius:3px}
+  .w-pace{position:absolute;top:-3px;width:2px;height:12px;margin-left:-1px;border-radius:1px;background:rgba(255,255,255,.88);box-shadow:0 0 0 1.5px rgba(22,22,28,.85)}
+  .w-used{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums}
+  .g-head{font-size:10.5px;font-weight:650;color:var(--label-2);text-transform:uppercase;letter-spacing:.5px;margin:10px 4px 5px}
+  .g-box{background:var(--fill-3);border-radius:14px;padding:0 10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);margin-bottom:4px}
+  .g-box > .win:first-child{border-top:none}
+  .c-note{font-size:12px;color:var(--label-2);line-height:1.5;padding:8px 2px 4px;border-top:1px solid var(--sep)}
+  .c-sessions{border-top:1px solid var(--sep);padding:7px 2px 2px}
+  .s-row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--label-2);padding:3px 0;min-width:0}
+  .s-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .s-d{color:var(--label-3);flex:none}
+  .s-dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 0 2.5px rgba(255,255,255,.06)}
+  .s-more{font-size:11px;color:var(--label-3);padding:2px 0 2px 15px}
+
+  /* ---- The other three edges -------------------------------------------------
+     The rules above draw the right-hand edge, the original layout and still the default. Each block
+     below mirrors or rotates that one for another edge. Two things stay in JavaScript because they
+     depend on measurement: where the card and the bridge sit along the pill (`placeCard`), and, on the
+     flat edges, how far down or up the card clears a pill whose thickness follows its contents. */
+
+  /* Left: the right-hand layout mirrored. */
+  body[data-edge="left"] #pill{right:auto;left:var(--gap)}
+  body[data-edge="left"] #card{left:calc(var(--gap) + var(--pill-w) + 12px);right:10px;margin-left:0;margin-right:auto;--in-x:-8px}
+  body[data-edge="left"] #tail{right:auto;left:calc(var(--gap) + var(--pill-w) - 2px)}
+
+  /* Top and bottom: the capsule lies flat, so it is a row and its thickness comes from the cells. */
+  body[data-edge="top"] #pill,body[data-edge="bottom"] #pill{
+    right:auto;left:50%;top:auto;transform:translateX(-50%);
+    flex-direction:row;width:auto;height:auto;padding:6px 10px 6px 8px;border-radius:30px;gap:4px;
+  }
+  body[data-edge="top"] #pill{top:var(--gap)}
+  body[data-edge="bottom"] #pill{bottom:var(--gap)}
+  body[data-edge="top"] .divider,body[data-edge="bottom"] .divider{width:1px;height:26px;margin:0 2px}
+  /* A fixed width here, not the fluid one the upright edges use: `placeCard` measures the card to
+     centre it, and a shrink-to-fit width would change as it moves. */
+  body[data-edge="top"] #card,body[data-edge="bottom"] #card{
+    left:8px;right:auto;top:0;transform:none;margin-left:0;
+    width:264px;max-height:calc(100% - 140px);--in-x:0px;
+  }
+  body[data-edge="top"] #card{--in-y:-8px}
+  body[data-edge="bottom"] #card{--in-y:8px}
+  body[data-edge="top"] #tail,body[data-edge="bottom"] #tail{right:auto;width:40px;height:16px}
+
+  /* ---- The two handles --------------------------------------------------------
+     Move above the near end of the capsule, settings below the far one (beside them when it lies
+     flat). At rest each is a small mark — a grabber bar for moving, a dot for settings — and under
+     the pointer it grows into a glass button carrying its glyph. `placeHandles` centres each box. */
+  .handle{position:absolute;width:44px;height:44px;display:none;--rot:0deg}
+  .handle.placed{display:block}
+  .handle.hover{cursor:pointer}
+  .handle > *{position:absolute;left:50%;top:50%;pointer-events:none;transition:opacity .2s,transform .36s var(--ease-spring)}
+  .h-rest{width:22px;height:5px;margin:-2.5px 0 0 -11px;border-radius:3px;background:rgba(255,255,255,.42);
+    box-shadow:0 0 0 1px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.35);transform:rotate(var(--rot))}
+  #orb .h-rest{width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%}
+  .h-disc{width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;isolation:isolate;
+    background:var(--espelho),rgba(30,30,36,.9);box-shadow:var(--edge),var(--shadow-pill);opacity:0;transform:scale(.55)}
+  .h-glyph{width:17px;height:17px;margin:-8.5px 0 0 -8.5px;fill:var(--label-1);opacity:0;
+    transform:rotate(calc(var(--spins,0) * 360deg - 60deg)) scale(.5);transition:opacity .2s,transform .55s cubic-bezier(.34,1.2,.64,1)}
+  .handle.hover .h-rest{opacity:0;transform:rotate(var(--rot)) scale(.4)}
+  .handle.hover .h-disc{opacity:1;transform:scale(1)}
+  .handle.hover .h-glyph{opacity:1;transform:rotate(calc(var(--spins,0) * 360deg)) scale(1)}
+  /* Carrying: the button gets a bright ring and the hand stops turning — it is being held now, not offered */
+  #move.armed .h-disc{box-shadow:0 0 0 2px rgba(255,255,255,.85),var(--shadow-pill)}
+  body[data-edge="top"] .handle,body[data-edge="bottom"] .handle{--rot:90deg}
+  @media (prefers-reduced-motion: reduce){.handle > *{transition:none}}
+
+  /* ---- Auto-hide ------------------------------------------------------------
+     Tucked, the capsule slides past the screen edge until only --peek of it shows; the pointer on that
+     strip brings it back. The handles go with it. The transforms repeat the base ones because a
+     transform is one property, not a stack. */
+  body.tucked #pill{transform:translateY(-50%) translateX(calc(100% + var(--gap) - var(--peek)));
+    box-shadow:var(--edge),0 0 0 1px rgba(255,255,255,.30),var(--shadow-pill)}
+  body.tucked[data-edge="left"] #pill{transform:translateY(-50%) translateX(calc(-100% - var(--gap) + var(--peek)))}
+  body.tucked[data-edge="top"] #pill{transform:translateX(-50%) translateY(calc(-100% - var(--gap) + var(--peek)))}
+  body.tucked[data-edge="bottom"] #pill{transform:translateX(-50%) translateY(calc(100% + var(--gap) - var(--peek)))}
+  body.tucked .handle{opacity:0;pointer-events:none}
+  .handle{transition:opacity .2s}
+  @media (prefers-reduced-motion: reduce){#pill{transition:none}}
 </style>
 </head>
 <body>
@@ -246,10 +269,7 @@
   <div id="card"></div>
   <div id="tail"></div>
   <div id="move" class="handle">
-    <svg class="h-rest" viewBox="-36 -36 72 72" aria-hidden="true">
-      <circle r="28.5" fill="none" style="stroke:var(--edge)" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-      <circle r="28.5" fill="none" style="stroke:rgba(16,16,20,var(--glass-a))" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-    </svg>
+    <span class="h-rest"></span>
     <div class="h-disc"></div>
     <!-- A hand, as on the Mac: the gesture is a carry, not a nudge, which is what arrows would say -->
     <svg class="h-glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -257,10 +277,7 @@
     </svg>
   </div>
   <div id="orb" class="handle">
-    <svg class="h-rest" viewBox="-36 -36 72 72" aria-hidden="true">
-      <circle r="28.5" fill="none" style="stroke:var(--edge)" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-      <circle r="28.5" fill="none" style="stroke:rgba(16,16,20,var(--glass-a))" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-    </svg>
+    <span class="h-rest"></span>
     <div class="h-disc"></div>
     <svg class="h-glyph" viewBox="0 0 12 12" aria-hidden="true"><path fill-rule="evenodd" d="M5.1.6h1.8l.3 1.5 1.1.5 1.3-.8 1.3 1.3-.8 1.3.5 1.1 1.5.3v1.8l-1.5.3-.5 1.1.8 1.3-1.3 1.3-1.3-.8-1.1.5-.3 1.5H5.1l-.3-1.5-1.1-.5-1.3.8-1.3-1.3.8-1.3-.5-1.1L.6 6.9V5.1l1.5-.3.5-1.1-.8-1.3 1.3-1.3 1.3.8 1.1-.5zM6 4.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"/></svg>
   </div>
@@ -271,15 +288,41 @@
 const invoke = window.__TAURI__.core.invoke;
 // Auto-hide state, read by reportHot from the first render on
 let autoHide=false, tucked=false, tuckTimer=null;
-const LOCK_HTML=`<div class="lock" title="Fixed in place: click to auto-hide"><svg class="shut" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><svg class="open" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/></svg></div>`;
+const LOCK_HTML=`<i class="divider" aria-hidden="true"></i><div class="lock" title="Fixed in place: click to auto-hide"><svg class="shut" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><svg class="open" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/></svg></div>`;
 const listen = window.__TAURI__.event.listen;
 
-/* Colour ramp (upstream palette values) */
-const AMPLE='#00FF88', WATCH='#F2FF00', CRIT='#FF3F00';
+/* Colour ramp: the system green, yellow and red of Apple's dark palette — saturated enough to read on
+   the glass at a glance, without the neon of the old ramp that glowed against dark wallpapers */
+const AMPLE='#30D158', WATCH='#FFD60A', CRIT='#FF453A';
 // The status arc is neutral on purpose: the ring behind it is coloured by how much of the limit
 // is gone, and a green arc inside it reads as part of that scale. Waiting borrows the warning yellow.
-const TRACK='rgba(255,255,255,.13)', INK='#ffffff', DIM='#808080';
+const TRACK='rgba(255,255,255,.12)', INK='#ffffff', DIM='rgba(235,235,245,.40)';
 const tone=f=> f>=0.8?CRIT : f>=0.5?WATCH : AMPLE;
+// The bar's fill: the tone, a touch lighter where it starts, and a faint glow of its own colour
+function fillStyle(f){
+  const c=tone(f);
+  return `background:linear-gradient(90deg,color-mix(in srgb,${c} 72%,#fff),${c});box-shadow:0 0 8px -1px ${c}`;
+}
+/* The pace mark: how far through its window a limit is, so the bar says whether the allowance is
+   being spent faster than the clock. Only for windows whose length is known from their id or label;
+   a window it cannot place gets no mark rather than a guess. */
+function windowLength(w){
+  const t=(String(w.id)+' '+(w.label||'')).toLowerCase();
+  let m=t.match(/(\d+)\s*-?\s*h(?:our)?s?\b/); if(m) return +m[1]*3600e3;
+  m=t.match(/(\d+)\s*-?\s*d(?:ay)?s?\b/); if(m) return +m[1]*86400e3;
+  m=t.match(/(\d+)\s*-?\s*m(?:in)?\s+limit/); if(m) return +m[1]*60e3;
+  if(/\bsession\b|five.hour/.test(t)) return 5*3600e3;
+  if(/seven_day|week/.test(t)) return 7*86400e3;
+  if(/month/.test(t)) return 30*86400e3;
+  return 0;
+}
+function paceOf(w){
+  if(!w.resets_at) return null;
+  const len=windowLength(w); if(!len) return null;
+  const left=w.resets_at-Date.now();
+  if(left<=0||left>len) return null;
+  return 1-left/len;
+}
 // Whole percents, except where rounding would read as nothing used or nothing left, as the Mac's Percent does
 function smallPct(v){
   if(v<=0) return '0';
@@ -839,9 +882,10 @@ function renderRing(){
     const cell=pill.querySelector(`.cell[data-p="${p.id}"]`); if(!cell) continue;
     const svg=cell.querySelector('svg.ring'), reading=cell.querySelector('svg.reading'), activity=cell.querySelector('svg.activity'), pct=cell.querySelector('.pct'), glyph=cell.querySelector('.glyph'), wrap=cell.querySelector('.ringwrap');
     const h=headlineOf(p.snap,p.base);
-    let inner=`<circle cx="28" cy="28" r="22" fill="rgba(255,255,255,.055)"/><circle cx="28" cy="28" r="25" fill="none" stroke="${TRACK}" stroke-width="5"/>`;
+    // No filled disc any more: the glyph's glass bead (CSS) is the centre of the ring
+    let inner=`<circle cx="28" cy="28" r="25" fill="none" stroke="${TRACK}" stroke-width="4.6"/>`;
     wrap.classList.toggle('pressed',!!refreshing[p.id]);
-    reading.innerHTML=h && h.count==null?svgArc(25,Math.min(h.used,1),tone(h.used),5):'';
+    reading.innerHTML=h && h.count==null?svgArc(25,Math.min(h.used,1),tone(h.used),4.6):'';
     if(weeklyRing!=='off'){ // the week, thinner and at its own radius, in its own colour: a session at 12% beside a week at 91% is the case this exists for
       const wk=weeklyOf(p.snap,p.base);
       // Inside, it shares the gap with the working indicator, so it stands down while that is showing
@@ -904,9 +948,21 @@ function renderCard(){
   const c=document.getElementById('card');
   const p=providers().find(x=>x.id===hoverId)||providers()[0];
   const snap=p.snap;
-  const headIcon=glyphHtml(p,true);
-  let html=`<div class="c-head">${headIcon}<span class="c-title">${ui().title(p.name)}</span></div>`;
-  if(staleOf(snap)&&snap.fetched_at) html+=`<div class="c-sub">${textCopy('Updated')} ${ago(snap.fetched_at)}</div>`;
+  /* The head answers the glance on its own: who, the headline figure in its colour, and one line
+     under the name — how old the reading is when it is stale, else whether an agent is at work, else
+     when the headline window resets. The rows below are for reading closely. */
+  const h=headlineOf(snap,p.base), work=workState(p.base);
+  let sub='', subDot='';
+  if(staleOf(snap)&&snap.fetched_at) sub=`${textCopy('Updated')} ${ago(snap.fetched_at)}`;
+  else if(work==='running'){ sub=textCopy('Working'); subDot=INK; }
+  else if(work==='attention'){ sub=textCopy('Waiting'); subDot=WATCH; }
+  else if(h&&h.count==null&&h.resets_at) sub=resetCopy(h.resets_at);
+  const big=(snap.status!=='needsAuth'&&h&&h.count==null)
+    ?`<div class="c-big" style="color:${tone(h.used)}">${h.derived?'~':''}${pctText(h.used)}<small>%</small></div>`:'';
+  let html=`<div class="c-head"><div class="c-icon">${glyphHtml(p,true)||esc(p.glyph)}</div>`
+    +`<div class="c-id"><div class="c-title">${esc(ui().title(p.name))}</div>`
+    +(sub?`<div class="c-sub">${subDot?`<span class="c-dot" style="background:${subDot}"></span>`:''}<span>${esc(sub)}</span></div>`:'')
+    +`</div>${big}</div>`;
   if(snap.status==='needsAuth'){
     const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',grok:'Run grok login to see usage.',gemini:'Sign in to Antigravity to see usage.',geminiapp:'Click the ring to sign in to Gemini.'}[p.base]||'';
     html+=`<div class="c-note">${textCopy(who)}<br>${esc(textCopy(snap.note||''))}</div>`;
@@ -926,9 +982,10 @@ function renderCard(){
           <div class="w-used">${w.count>0?`~${w.count} ${textCopy(w.count===1?'request today':'requests today')}`:textCopy('no requests today')}</div></div>`;
         continue;
       }
+      const pace=paceOf(w);
       html+=`<div class="win">
         <div class="w-row"><span class="w-label">${esc(textCopy(w.label))}</span><span class="w-reset">${resetCopy(w.resets_at)}</span></div>
-        <div class="w-track"><div class="w-fill" style="width:${(Math.min(w.used,1)*100).toFixed(0)}%;background:${tone(w.used)}"></div></div>
+        <div class="w-track"><div class="w-fill" style="width:${(Math.min(w.used,1)*100).toFixed(1)}%;${fillStyle(w.used)}"></div>${pace!=null?`<span class="w-pace" style="left:${(pace*100).toFixed(1)}%"></span>`:''}</div>
         <div class="w-used">${esc(usedCopy(w))}</div>
       </div>`;
     }
@@ -940,7 +997,7 @@ function renderCard(){
     if(act.length){
       html+=`<div class="c-sessions">`;
       for(const s of act.slice(0,SESSION_ROWS)){
-        html+=`<div class="s-row"><span class="s-dot" style="background:${STATE_DOT[s.state]||'#666'}"></span>${esc(s.title)}</div>`;
+        html+=`<div class="s-row"><span class="s-dot" style="background:${STATE_DOT[s.state]||'#666'}"></span><span class="s-t">${esc(s.title)}</span></div>`;
       }
       html+=moreRow(act.length-SESSION_ROWS)+`</div>`;
     }
@@ -951,7 +1008,7 @@ function renderCard(){
       html+=`<div class="c-sessions">`;
       for(const a of acts.slice(0,SESSION_ROWS)){
         const col=a.state==='waiting'?WATCH:INK;
-        html+=`<div class="s-row"><span class="s-dot" style="background:${col}"></span>${esc(a.name)}<span style="color:#808080;margin-left:auto">${esc(textCopy(a.detail))}</span></div>`;
+        html+=`<div class="s-row"><span class="s-dot" style="background:${col}"></span><span class="s-t">${esc(a.name)}</span><span class="s-d">${esc(textCopy(a.detail))}</span></div>`;
       }
       html+=moreRow(acts.length-SESSION_ROWS)+`</div>`;
     }
@@ -974,7 +1031,7 @@ function placeCard(){
     let top=Math.round(cy-ch/2); top=Math.max(8+insets[0],Math.min(top,H-insets[2]-ch-8));
     card.style.top=top+'px'; card.style.left='';
     const ry=rr.top+rr.height/2;
-    const th=tail.offsetHeight||36, ty=Math.max(top+16+th/2,Math.min(top+ch-16-th/2,ry));
+    const th=tail.offsetHeight||40, ty=Math.max(top+16+th/2,Math.min(top+ch-16-th/2,ry));
     tail.style.top=Math.round(ty-th/2)+'px'; tail.style.left='';
   }else{
     const pr=pill.getBoundingClientRect();
@@ -983,11 +1040,12 @@ function placeCard(){
     let left=Math.round(cx-cw/2); left=Math.max(8+insets[3],Math.min(left,W-insets[1]-cw-8));
     card.style.left=left+'px';
     const rx=rr.left+rr.width/2;
-    const tw=tail.offsetWidth||36, tx=Math.max(left+16+tw/2,Math.min(left+cw-16-tw/2,rx));
+    const tw=tail.offsetWidth||40, tx=Math.max(left+16+tw/2,Math.min(left+cw-16-tw/2,rx));
     tail.style.left=Math.round(tx-tw/2)+'px';
-    // 30 px of clear gap, the same the upright edges leave, with the tail spanning it 1 px under the pill
-    if(notchEdge==='top'){ card.style.top=Math.round(pr.bottom+30)+'px'; tail.style.top=Math.round(pr.bottom-1)+'px'; }
-    else{ card.style.top=Math.round(pr.top-30-ch)+'px'; tail.style.top=Math.round(pr.top-31)+'px'; }
+    // 12 px of clear gap, the same the upright edges leave, with the invisible bridge spanning it
+    // 2 px into the capsule, so the pointer never crosses a strip that belongs to the desktop
+    if(notchEdge==='top'){ card.style.top=Math.round(pr.bottom+12)+'px'; tail.style.top=Math.round(pr.bottom-2)+'px'; }
+    else{ card.style.top=Math.round(pr.top-12-ch)+'px'; tail.style.top=Math.round(pr.top-14)+'px'; }
   }
 }
 
@@ -1155,11 +1213,12 @@ function notice(msg){
 
 /* ---- The handles ----------------------------------------------------------
    Settings past the far end of the pill, move past the near one. Placed whenever the hot rectangles
-   are reported, since those follow every change to the pill. Hover is a circle round each fillet's
+   are reported, since those follow every change to the pill. Hover is a circle round each handle's
    centre, as on the Mac, not the whole box; the card gives way while either is under the pointer.
    A click on the settings orb opens Settings; holding the move handle carries the notch. */
 const orb=document.getElementById('orb'), moveHandle=document.getElementById('move');
-const HANDLE_REACH=28.5; // the Mac's hot zone, half of 57
+const HANDLE_REACH=22; // half of the 44 px box: the hot circle round each handle's centre
+const HANDLE_OFF=25;   // from the capsule's end to the handle's centre: clear of the first ring
 let orbAt=null, moveAt=null, hovered=null, orbSpins=0, moveSpins=0, showMove=true, carrying=false;
 function put(el,x,y,z){
   el.style.left=(x/z-HANDLE_REACH)+'px'; el.style.top=(y/z-HANDLE_REACH)+'px';
@@ -1171,12 +1230,10 @@ function placeHandles(){
   if(!r.width) return false;
   // Measurements come back zoomed when fitZoom has zoomed the page; styles are written unzoomed
   const z=parseFloat(document.documentElement.style.zoom)||1;
-  const R=(parseFloat(getComputedStyle(pill).getPropertyValue('--fillet'))||38.7)*z;
-  // Each fillet's centre: the corner of its square diagonally opposite the one on the screen edge
-  const far=notchEdge==='left'?[r.left+R,r.bottom+R]:notchEdge==='top'?[r.right+R,r.top+R]
-    :notchEdge==='bottom'?[r.right+R,r.bottom-R]:[r.right-R,r.bottom+R];
-  const near=notchEdge==='left'?[r.left+R,r.top-R]:notchEdge==='top'?[r.left-R,r.top+R]
-    :notchEdge==='bottom'?[r.left-R,r.bottom-R]:[r.right-R,r.top-R];
+  const off=HANDLE_OFF*z, cx=r.left+r.width/2, cy=r.top+r.height/2;
+  // On the capsule's own axis, one past each end: below/above it upright, right/left of it lying flat
+  const far=edgeIsVertical()?[cx,r.bottom+off]:[r.right+off,cy];
+  const near=edgeIsVertical()?[cx,r.top-off]:[r.left-off,cy];
   orbAt=put(orb,far[0],far[1],z);
   // No point at all when it is switched off, since hover, the press and the hot area all read this
   moveAt=showMove?put(moveHandle,near[0],near[1],z):null;
@@ -1208,15 +1265,14 @@ function pressIn(el){
    screen, not a distance. The pill's own size goes with it, so a zone is the notch, not a guess. */
 /* The shape the zones draw: the pill standing upright, whichever edge it is on now. Worked out from
    the parts it is made of rather than measured, so a notch lying flat still offers the same
-   silhouette everywhere — the 70 px depth and the 18 px end padding are the pill's own, from the CSS
+   silhouette everywhere — the 64 px depth and the end padding are the capsule's own, from the CSS
    above. The notch really is shallower and shorter lying flat, but drawing that would offer four
    outlines of two sizes, which reads as four different things instead of one notch offered a place. */
 function pillShapes(){
   const cells=Math.max(1,pill.querySelectorAll('.cell').length);
-  const ring=(pill.querySelector('.ringwrap')||{}).offsetHeight||56;
-  const label=(pill.querySelector('.pct')||{}).offsetHeight||20;
-  const ends=36, between=14, underRing=6;
-  return { depth:70, length:ends+cells*(ring+underRing+label)+(cells-1)*between };
+  const cell=(pill.querySelector('.cell')||{}).offsetHeight||76;
+  const ends=21, between=6, lock=26+1+3+2*between;
+  return { depth:64, length:ends+cells*cell+(cells-1)*between+lock };
 }
 moveHandle.addEventListener('mousedown',e=>{
   if(e.button!==0||!near(moveAt,e.clientX,e.clientY)) return;

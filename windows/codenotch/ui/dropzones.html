@@ -4,22 +4,27 @@
 <meta charset="UTF-8">
 <style>
   /* The four places the notch can land, over one screen, while it is carried by the move handle.
-     Click-through and never focused: Rust sets both on the window. */
+     Click-through and never focused: Rust sets both on the window. Each is the capsule's own outline,
+     floating the same 10 px off its edge: a faint glass slot, lit up and grown where it would land. */
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden;user-select:none;cursor:default}
   .zone{
-    position:absolute;background:rgba(0,0,0,.3);
-    /* The notch's own outline: dashed, and washed inside. A stroke alone disappears over a light or
-       busy desktop, which is where seeing the places matters most. */
-    border:3px dashed rgba(232,232,234,.72);
-    transition:transform .3s cubic-bezier(.34,1.3,.64,1),background-color .2s,border-color .2s;
+    position:absolute;border-radius:32px;
+    /* Washed inside as well as outlined: a stroke alone disappears over a light or busy desktop,
+       which is where seeing the places matters most */
+    background:rgba(20,20,26,.42);
+    border:1.5px dashed rgba(255,255,255,.62);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 24px rgba(0,0,0,.28);
+    transition:transform .32s cubic-bezier(.34,1.3,.64,1),background-color .2s,border-color .2s,box-shadow .2s;
   }
-  .zone.on{background:rgba(0,0,0,.62);border-color:#e8e8ea;transform:scale(1.06)}
-  /* Welded to its edge, rounded on the three corners that are not against it, as the notch is */
-  #right{border-radius:20px 0 0 20px;right:0}
-  #left{border-radius:0 20px 20px 0;left:0}
-  #top{border-radius:0 0 20px 20px;top:0}
-  #bottom{border-radius:20px 20px 0 0;bottom:0}
+  .zone.on{
+    background:rgba(24,24,30,.72);border:1.5px solid rgba(255,255,255,.92);transform:scale(1.06);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 0 0 4px rgba(255,255,255,.14),0 12px 32px rgba(0,0,0,.4);
+  }
+  #right{right:10px}
+  #left{left:10px}
+  #top{top:10px}
+  #bottom{bottom:10px}
   @media (prefers-reduced-motion: reduce){.zone{transition:none}}
 </style>
 </head>
@@ -34,18 +39,24 @@ const listen = window.__TAURI__.event.listen;
 
 /* One shape, turned on its side for the flat edges: a column down a side edge, a row along a flat
    one. Depth and length are the pill's own, standing upright. */
+/* The zone the pointer is nearest slides along its edge under the pointer (`along`, 0–1, already
+   held back from the ends the same way the notch is); the other three wait in their middles. */
+function startAlong(edge,z,span,length){
+  const r=(edge===z.target&&typeof z.along==='number')?z.along:0.5;
+  return Math.round(Math.max(0,Math.min(span-length,span*r-length/2)));
+}
 function draw(z){
   if(!z) return;
   const depth=Math.round(z.depth), length=Math.round(z.length);
   for(const edge of ['left','right']){
     const el=document.getElementById(edge);
     el.style.width=depth+'px'; el.style.height=length+'px';
-    el.style.top=Math.round((z.h-length)/2)+'px';
+    el.style.top=startAlong(edge,z,z.h,length)+'px';
   }
   for(const edge of ['top','bottom']){
     const el=document.getElementById(edge);
     el.style.width=length+'px'; el.style.height=depth+'px';
-    el.style.left=Math.round((z.w-length)/2)+'px';
+    el.style.left=startAlong(edge,z,z.w,length)+'px';
   }
   for(const edge of ['left','right','top','bottom'])
     document.getElementById(edge).classList.toggle('on',edge===z.target);

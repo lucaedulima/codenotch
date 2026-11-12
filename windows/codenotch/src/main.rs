@@ -373,9 +373,35 @@ pub(crate) fn edge_at(x: f64, y: f64, w: f64, h: f64) -> &'static str {
     }
 }
 
-/// Carrying the notch by its move handle: the zones go up, the pointer picks one, and releasing
-/// hands it over. The notch itself stays where it is until then — what is being chosen is a place on
-/// the screen, not a distance moved, so nothing follows the pointer.
+/// Where the notch's centre really lands along an edge for a requested `ratio`. `edge_origin` keeps
+/// the whole window on the screen, and the window runs well past the capsule at both ends, so near
+/// either end of an edge the notch stops short of the pointer; the zone that is offered has to stop
+/// at the same place, or it promises a spot the notch cannot reach.
+fn settled_ratio(s: &Screen, edge: &str, size: f64, ratio: f64) -> f64 {
+    let (_, _, aw, ah) = s.area();
+    let (lw, lh) = notch_window_size(edge);
+    let (span, len) = if config::edge_is_vertical(edge) {
+        (ah, (lh * s.scale * size).round() as i32)
+    } else {
+        (aw, (lw * s.scale * size).round() as i32)
+    };
+    if span <= 0 {
+        return 0.5;
+    }
+    let len = len.clamp(0, span);
+    let start = ((span as f64 * ratio - len as f64 / 2.0).round() as i32).clamp(0, (span - len).max(0));
+    ((start as f64 + len as f64 / 2.0) / span as f64).clamp(0.0, 1.0)
+}
+
+fn same_screen(a: &Screen, b: &Screen) -> bool {
+    a.name == b.name && a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
+}
+
+/// Carrying the notch by its move handle: the zones go up and the one nearest the pointer lights up
+/// and slides along its edge under the pointer, so the notch can be set anywhere along any edge, not
+/// just in the middle. Carried onto another screen, the zones move to that screen. Releasing hands
+/// over that edge, that place along it and that screen. The notch itself stays where it is until
+/// then — what is being chosen is a place on the screen, not a distance moved.
 ///
 /// `depth` and `length` are the pill's own measurements standing upright, in the notch page's CSS px.
 #[tauri::command]
@@ -389,51 +415,81 @@ fn begin_move(app: AppHandle, depth: f64, length: f64) {
             DRAGGING.store(false, std::sync::atomic::Ordering::SeqCst);
             let _ = app.emit("move_end", ());
         };
-        let Some(mon) = target_screen(&app) else {
+        let Some(mut mon) = target_screen(&app) else {
             done(&app);
             return;
         };
-        let from = {
+        let all = screens(&app);
+        let (from, from_ratio) = {
             let st = app.state::<AppState>();
             let c = st.cfg.lock().unwrap();
-            config::edge_or_right(&c.notch_edge)
+            (config::edge_or_right(&c.notch_edge), c.notch_y.clamp(0.0, 1.0))
         };
         // The overlay is at the monitor's own scale; the notch page is that scale times its size
         let size = ui_scale(&app);
         // Every figure here is the work area's, to match the overlay window and the notch itself:
         // the zone drawn on the taskbar's edge has to sit where the notch will, and the edge the
         // pointer picks has to be read against the same rectangle the zones are drawn in.
-        let (ax, ay, aw, ah) = mon.area();
-        let mut zones = dropzones::Zones {
-            w: aw as f64 / mon.scale,
-            h: ah as f64 / mon.scale,
-            depth: depth * size,
-            length: length * size,
-            target: from.clone(),
+        let zones_for = |m: &Screen, target: &str, along: f64| {
+            let (_, _, aw, ah) = m.area();
+            dropzones::Zones {
+                w: aw as f64 / m.scale,
+                h: ah as f64 / m.scale,
+                depth: depth * size,
+                length: length * size,
+                target: target.to_string(),
+                along,
+            }
         };
-        dropzones::show(&app, &mon, &zones);
         let mut target = from.clone();
+        let mut along = settled_ratio(&mon, &target, size, from_ratio);
+        dropzones::show(&app, &mon, &zones_for(&mon, &target, along));
+        let mut moved = false;
         while left_button_down() {
             if let Ok(cur) = app.cursor_position() {
-                let next = edge_at(cur.x - ax as f64, cur.y - ay as f64, aw as f64, ah as f64);
-                if next != target {
+                let (px, py) = (cur.x.round() as i32, cur.y.round() as i32);
+                // Onto another screen: the zones go with the pointer
+                if let Some(under) = all.iter().find(|s| s.contains(px, py)) {
+                    if !same_screen(under, &mon) {
+                        mon = under.clone();
+                        dropzones::move_to(&app, &mon, &zones_for(&mon, &target, along));
+                        moved = true;
+                    }
+                }
+                let (ax, ay, aw, ah) = mon.area();
+                let (rx, ry) = (cur.x - ax as f64, cur.y - ay as f64);
+                let next = edge_at(rx, ry, aw as f64, ah as f64);
+                let raw = if config::edge_is_vertical(next) {
+                    ry / ah.max(1) as f64
+                } else {
+                    rx / aw.max(1) as f64
+                };
+                let next_along = settled_ratio(&mon, next, size, raw.clamp(0.0, 1.0));
+                if next != target || (next_along - along).abs() > 0.0005 {
+                    let turned = next != target;
                     target = next.to_string();
-                    zones.target = target.clone();
-                    dropzones::retarget(&app, &zones);
-                    let _ = app.emit("move_target", &target);
+                    along = next_along;
+                    moved = true;
+                    dropzones::retarget(&app, &zones_for(&mon, &target, along));
+                    if turned {
+                        let _ = app.emit("move_target", &target);
+                    }
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(16));
         }
-        applog(&format!("notch carry: {from} -> {target}"));
-        if target != from {
+        applog(&format!(
+            "notch carry: {from} -> {target} along={along:.3} monitor={:?}",
+            mon.name
+        ));
+        if moved {
             {
                 let st = app.state::<AppState>();
                 let mut c = st.cfg.lock().unwrap();
                 c.notch_edge = target.clone();
-                // Centred, because the zone that was shown is centred: it lands where it was offered,
-                // not at whatever fraction along it happened to sit on the edge it came from
-                c.notch_y = 0.5;
+                // Where the lit zone stood when the button came up: it lands where it was offered
+                c.notch_y = along;
+                c.notch_monitor = mon.name.clone();
                 config::save(&c);
             }
             place_notch(&app);
@@ -462,6 +518,12 @@ fn drag_begin(app: AppHandle) {
             return;
         }
         let (ww, wh) = (size.width as i32, size.height as i32);
+        let was_vertical = {
+            let st = app.state::<AppState>();
+            let c = st.cfg.lock().unwrap();
+            config::edge_is_vertical(&config::edge_or_right(&c.notch_edge))
+        };
+        let mut last_cur = (start_cur.x, start_cur.y);
         // The whole desktop, so the window can be carried across monitors before it is dropped
         let (vx0, vy0) = (all.iter().map(|s| s.x).min().unwrap(), all.iter().map(|s| s.y).min().unwrap());
         let (vx1, vy1) = (
@@ -475,6 +537,7 @@ fn drag_begin(app: AppHandle) {
                 break;
             }
             if let Ok(cur) = app.cursor_position() {
+                last_cur = (cur.x, cur.y);
                 let nx = ((start_pos.x as f64 + (cur.x - start_cur.x)).round() as i32).clamp(vx0, (vx1 - ww).max(vx0));
                 let ny = ((start_pos.y as f64 + (cur.y - start_cur.y)).round() as i32).clamp(vy0, (vy1 - wh).max(vy0));
                 if nx != last_x || ny != last_y {
@@ -487,28 +550,38 @@ fn drag_begin(app: AppHandle) {
             std::thread::sleep(std::time::Duration::from_millis(8));
         }
         if moved {
-            // Dropped: the monitor under the window's centre owns it, and the nearest of that
-            // monitor's four edges is where it snaps back to.
+            // Dropped: the monitor under the *pointer* owns it, and the nearest of that monitor's
+            // four edges to the pointer is where it snaps. The window's centre used to decide, but the
+            // window is several times wider than the capsule: carried onto the next screen, the
+            // capsule was already over there while the centre still sat on the old one, and it went
+            // back. The window's centre only stands in when the pointer is somehow off every screen.
             let (cx, cy) = (last_x + ww / 2, last_y + wh / 2);
+            let (px, py) = (last_cur.0.round() as i32, last_cur.1.round() as i32);
             let mon = all
                 .iter()
-                .find(|s| s.contains(cx, cy))
+                .find(|s| s.contains(px, py))
+                .or_else(|| all.iter().find(|s| s.contains(cx, cy)))
                 .cloned()
                 .unwrap_or_else(|| all[0].clone());
+            let (px, py) = (px.clamp(mon.x, mon.x + mon.w - 1), py.clamp(mon.y, mon.y + mon.h - 1));
             let d = [
-                ("left", (cx - mon.x).max(0)),
-                ("right", (mon.x + mon.w - cx).max(0)),
-                ("top", (cy - mon.y).max(0)),
-                ("bottom", (mon.y + mon.h - cy).max(0)),
+                ("left", (px - mon.x).max(0)),
+                ("right", (mon.x + mon.w - px).max(0)),
+                ("top", (py - mon.y).max(0)),
+                ("bottom", (mon.y + mon.h - py).max(0)),
             ];
             let edge = d.iter().min_by_key(|(_, v)| *v).map(|(e, _)| *e).unwrap_or("right");
+            // Along the edge: the window's centre while the notch keeps its shape, because that is
+            // the capsule's own centre and the point it was held by stays under the pointer; the
+            // pointer itself when it turns on its side, since the window turns with it.
+            let (rx, ry) = if config::edge_is_vertical(edge) == was_vertical { (cx, cy) } else { (px, py) };
             // Measured against the work area, because that is the span `edge_origin` reads the ratio
             // back against: on the monitor's, a drop next to the taskbar landed short of the pointer.
             let (ax, ay, aw, ah) = mon.area();
             let ratio = if config::edge_is_vertical(edge) {
-                ((cy - ay) as f64 / ah.max(1) as f64).clamp(0.0, 1.0)
+                ((ry - ay) as f64 / ah.max(1) as f64).clamp(0.0, 1.0)
             } else {
-                ((cx - ax) as f64 / aw.max(1) as f64).clamp(0.0, 1.0)
+                ((rx - ax) as f64 / aw.max(1) as f64).clamp(0.0, 1.0)
             };
             {
                 let st = app.state::<AppState>();

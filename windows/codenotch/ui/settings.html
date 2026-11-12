@@ -4,130 +4,280 @@
 <meta charset="UTF-8">
 <title>Codenotch Settings</title>
 <style>
-  /* The Mac's Settings (Sources/Settings/SettingsView.swift) over Windows 11's Mica: a sidebar card
-     darker than the pane, grouped sections with captions as rows, and Windows' own control cues —
-     a soft fill with an accent bar for the selected section, outlined toggles, the system accent.
-     The panel is translucent so Mica shows through; without Mica, body.solid draws the same tones. */
+  /* Codenotch Settings, Liquid Glass edition (LIQUID-GLASS.md at the repo root).
+     Here the glass is real: unlike the notch, this page paints its own backdrop — a light field and a
+     faint grid laid thinly over Windows 11's Mica — so the sidebar and the title bar can refract it
+     through an SVG lens (`backdrop-filter: url(#…)`, Chromium-only, which WebView2 is). Structure is
+     glass; content is not: the setting groups are near-opaque cards with only a gloss on top, because
+     text on see-through glass tires the eye. The selection in the sidebar and in every segmented
+     control is a drop of glass that slides between options instead of blinking. */
   :root{
-    --accent:#0a7aff; --on-accent:#ffffff;
-    --text:#f2f2f4; --text2:rgba(235,235,245,.62); --text3:rgba(235,235,245,.38);
-    --pane:rgba(255,255,255,.13); --side:rgba(0,0,0,.40); --group:rgba(255,255,255,.06);
-    --line:rgba(255,255,255,.08); --hi:rgba(255,255,255,.05); --sep:rgba(255,255,255,.08);
-    --seg-bg:rgba(255,255,255,.09); --hover:rgba(255,255,255,.06); --sel-soft:rgba(255,255,255,.08);
-    --btn:rgba(255,255,255,.10); --btn-hover:rgba(255,255,255,.16);
-    --danger-bg:rgba(255,99,99,.14); --danger:#ff8a8a;
+    --accent:#0a84ff; --on-accent:#ffffff;
+    --label-1:rgba(255,255,255,.96); --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.36);
+    --fill-1:rgba(255,255,255,.10); --fill-3:rgba(255,255,255,.05); --fill-4:rgba(255,255,255,.03);
+    --fill-selected:rgba(255,255,255,.13);
+    --sep:rgba(255,255,255,.08);
+    --bg-window:rgba(18,18,22,.58);
+    --grade-linha:rgba(255,255,255,.028);
+    --ambient-1:rgba(255,255,255,.07); --ambient-2:rgba(120,140,255,.06); --ambient-3:rgba(0,0,0,.40);
+    --surface-1:rgba(40,40,46,.92);
+    --surface-chrome:rgba(44,44,52,.34);
+    --surface-toast:rgba(48,48,54,.92);
+    --luz-espelho:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02) 26%, transparent 46%);
+    --luz-quinas:
+      radial-gradient(78% 120% at -10% -25%, rgba(255,255,255,.16), rgba(255,255,255,.05) 44%, transparent 72%),
+      radial-gradient(62% 100% at 112% 125%, rgba(255,255,255,.11), transparent 74%);
+    --luz-controle:linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02) 44%, transparent 62%);
+    --borda-controle:inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(255,255,255,.04);
+    --glass-edge:
+      inset 0 1px 0 rgba(255,255,255,.22), inset 1px 0 0 rgba(255,255,255,.08),
+      inset -1px 0 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(255,255,255,.10),
+      inset 0 8px 24px -8px rgba(255,255,255,.08), inset 0 -10px 24px -12px rgba(0,0,0,.35);
+    --glass-rim:linear-gradient(135deg,
+      rgba(255,255,255,.42) 0%, rgba(255,255,255,.10) 22%, rgba(255,255,255,.02) 45%,
+      rgba(255,255,255,.08) 60%, rgba(255,255,255,.32) 100%);
+    --thumb:linear-gradient(180deg, rgba(255,255,255,.26), rgba(255,255,255,.16));
+    --thumb-shadow:0 1px 2px rgba(0,0,0,.35), 0 3px 8px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.28);
+    --shadow-1:0 1px 2px rgba(0,0,0,.24), 0 1px 3px rgba(0,0,0,.20);
+    --shadow-2:0 2px 4px rgba(0,0,0,.28), 0 6px 16px rgba(0,0,0,.30);
+    --shadow-3:0 4px 8px rgba(0,0,0,.32), 0 12px 32px rgba(0,0,0,.44);
+    --danger-bg:rgba(255,69,58,.16); --danger:#ff7a70;
+    --chev:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='white' stroke-opacity='.7' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    --ease-out:cubic-bezier(.32,.72,0,1);
+    --ease-spring:cubic-bezier(.34,1.4,.64,1);
+    --ease-liquid:cubic-bezier(.34,1.42,.36,1);
+    color-scheme:dark;
   }
   @media (prefers-color-scheme: light){
     :root{
-      --text:#1d1d1f; --text2:rgba(60,60,67,.70); --text3:rgba(60,60,67,.45);
-      --pane:rgba(255,255,255,.50); --side:rgba(0,0,0,.06); --group:rgba(255,255,255,.72);
-      --line:rgba(0,0,0,.07); --hi:rgba(255,255,255,.80); --sep:rgba(0,0,0,.07);
-      --seg-bg:rgba(0,0,0,.06); --hover:rgba(0,0,0,.04); --sel-soft:rgba(0,0,0,.05);
-      --btn:rgba(0,0,0,.05); --btn-hover:rgba(0,0,0,.09);
-      --danger-bg:rgba(196,43,28,.10); --danger:#c42b1c;
+      --accent:#0a7aff;
+      --label-1:rgba(0,0,0,.86); --label-2:rgba(60,60,67,.66); --label-3:rgba(60,60,67,.40);
+      --fill-1:rgba(0,0,0,.07); --fill-3:rgba(0,0,0,.04); --fill-4:rgba(0,0,0,.025);
+      --fill-selected:rgba(255,255,255,.55);
+      --sep:rgba(60,60,67,.14);
+      --bg-window:rgba(226,226,232,.56);
+      --grade-linha:rgba(0,0,0,.035);
+      --ambient-1:rgba(255,255,255,.85); --ambient-2:rgba(255,255,255,.5); --ambient-3:rgba(0,0,0,.08);
+      --surface-1:rgba(255,255,255,.93);
+      --surface-chrome:rgba(255,255,255,.22);
+      --surface-toast:rgba(255,255,255,.94);
+      --luz-espelho:
+        linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.10) 26%, transparent 46%),
+        linear-gradient(0deg, rgba(255,255,255,.30), rgba(255,255,255,.05) 18%, transparent 34%);
+      --luz-quinas:
+        radial-gradient(78% 120% at -10% -25%, rgba(255,255,255,.72), rgba(255,255,255,.18) 44%, transparent 72%),
+        radial-gradient(62% 100% at 112% 125%, rgba(255,255,255,.52), rgba(255,255,255,.10) 46%, transparent 74%);
+      --luz-controle:linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,.06) 44%, transparent 62%);
+      --borda-controle:inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(255,255,255,.35);
+      --glass-edge:
+        inset 0 1.5px 0 rgba(255,255,255,.90), inset 1.5px 0 0 rgba(255,255,255,.45),
+        inset -1.5px 0 0 rgba(255,255,255,.35), inset 0 -1.5px 0 rgba(255,255,255,.55),
+        inset 0 8px 24px -8px rgba(255,255,255,.65), inset 0 -10px 24px -12px rgba(0,0,0,.10);
+      --glass-rim:linear-gradient(135deg,
+        rgba(255,255,255,.95) 0%, rgba(255,255,255,.25) 22%, rgba(255,255,255,.05) 45%,
+        rgba(255,255,255,.18) 60%, rgba(255,255,255,.85) 100%);
+      --thumb:#ffffff;
+      --thumb-shadow:0 1px 2px rgba(0,0,0,.12), 0 3px 8px rgba(0,0,0,.10), inset 0 -1px 0 rgba(0,0,0,.04);
+      --shadow-1:0 1px 2px rgba(0,0,0,.05), 0 2px 6px rgba(0,0,0,.06);
+      --shadow-2:0 2px 4px rgba(0,0,0,.06), 0 6px 16px rgba(0,0,0,.10);
+      --shadow-3:0 4px 8px rgba(0,0,0,.08), 0 16px 40px rgba(0,0,0,.14);
+      --danger-bg:rgba(255,59,48,.12); --danger:#c42b1c;
+      --chev:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='black' stroke-opacity='.55' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      color-scheme:light;
     }
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:transparent;overflow:hidden;user-select:none}
-  body{font:13.5px/1.35 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:var(--text)}
-  body.solid{--pane:#3d3d40;--side:#1f2022;--group:#48484b;--hi:transparent;background:#2b2b2e}
-  @media (prefers-color-scheme: light){ body.solid{--pane:#f0f0f2;--side:#e2e2e6;--group:#ffffff;background:#f0f0f2} }
+  html,body{margin:0;height:100%;overflow:hidden;user-select:none}
+  html{background:transparent}
+  /* The ambient: what the glass refracts. Thin enough that Mica still tints the window. */
+  body{
+    font:13.5px/1.35 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:var(--label-1);
+    -webkit-font-smoothing:antialiased;
+    background-color:var(--bg-window);
+    background-image:
+      linear-gradient(var(--grade-linha) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grade-linha) 1px, transparent 1px),
+      radial-gradient(40rem 26rem at 8% -10%, var(--ambient-1), transparent 60%),
+      radial-gradient(34rem 24rem at 96% 4%, var(--ambient-2), transparent 58%),
+      radial-gradient(40rem 30rem at 50% 115%, var(--ambient-3), transparent 62%);
+    background-size:40px 40px, 40px 40px, auto, auto, auto;
+  }
+  /* No Mica (Windows 10, or transparency effects off): the same ambient on an opaque window */
+  body.solid{--bg-window:#18181c}
+  @media (prefers-color-scheme: light){ body.solid{--bg-window:#e4e4ea} }
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   button{font:inherit;color:inherit}
   html[lang="ko"] body{word-break:keep-all}
   [hidden]{display:none!important}
 
-  #app{display:flex;height:100%;background:var(--pane)}
+  #app{display:flex;height:100%;gap:10px;padding:10px}
 
-  /* ---- sidebar: a card inset from the window, as on the Mac ---- */
-  #side{width:196px;margin:4px;border-radius:14px;background:var(--side);border:1px solid var(--line);
-    box-shadow:inset 0 1px 0 var(--hi);display:flex;flex-direction:column;padding:0 8px 8px;flex:none}
-  #side .band{height:48px;flex:none}
+  /* ---- shared glass recipes ---- */
+  .glass-surface{position:relative;background:var(--surface-chrome);
+    backdrop-filter:url(#lente-barra) blur(2px) saturate(190%) brightness(1.04);
+    box-shadow:0 1px 2px rgba(0,0,0,.10), 0 10px 30px rgba(0,0,0,.14), var(--glass-edge)}
+  .glass-painel{backdrop-filter:url(#lente-painel) blur(2px) saturate(190%) brightness(1.04)}
+  .glass-surface::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--luz-quinas);mix-blend-mode:screen;pointer-events:none;z-index:0}
+  .glass-surface > *{position:relative;z-index:1}
+  .liquid::before,.group::before,#toast::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--glass-rim);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none;z-index:2}
+
+  /* ---- sidebar ---- */
+  #side{width:212px;flex:none;border-radius:18px;display:flex;flex-direction:column;padding:0 8px 8px;z-index:40}
+  .brand{display:flex;align-items:center;gap:10px;height:64px;padding:0 8px 0 10px;flex:none}
+  .logo{width:28px;height:28px;flex:none;border-radius:50%;position:relative;
+    background:conic-gradient(from 210deg,#30d158,#ffd60a 45%,#ff9f0a 70%,#30d158);
+    -webkit-mask:radial-gradient(circle,transparent 7.5px,#000 8px);mask:radial-gradient(circle,transparent 7.5px,#000 8px);
+    box-shadow:0 2px 8px rgba(48,209,88,.25)}
+  .brand-name{font-size:14px;font-weight:650;letter-spacing:-.1px;line-height:1.15}
+  .brand-ver{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums}
+  .nav{position:relative}
   #side .grow{flex:1}
-  .row{position:relative;display:flex;align-items:center;gap:9px;width:100%;height:32px;padding:0 8px;margin-bottom:2px;
-    border:0;border-radius:8px;background:transparent;text-align:left;font-size:13.5px}
-  .row:hover{background:var(--hover)}
-  .row.sel{background:var(--sel-soft)}
-  .row.sel::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent)}
-  .badge{width:20px;height:20px;border-radius:5.5px;display:grid;place-items:center;flex:none}
-  .badge svg{width:12px;height:12px;fill:#fff}
-  .b-blue{background:linear-gradient(#4fa6ff,#0a6cff)}
-  .b-indigo{background:linear-gradient(#8784ff,#5856d6)}
-  .b-gray{background:linear-gradient(#a6a6ab,#727277)}
-  .b-red{background:linear-gradient(#ff6d62,#dd3328)}
+  .row{position:relative;z-index:1;display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 8px;margin-bottom:2px;
+    border:0;border-radius:10px;background:transparent;text-align:left;font-size:13.5px;color:var(--label-1);cursor:default;
+    transition:background .15s, transform .14s var(--ease-spring)}
+  .row:hover{background:var(--fill-3)}
+  .row:active{transform:scale(.97)}
+  .row.sel,.row.sel:hover{background:transparent;font-weight:600}
+  .badge{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;flex:none;
+    background:var(--fill-1);box-shadow:var(--borda-controle);transition:background .25s,box-shadow .25s}
+  .badge svg{width:13px;height:13px;fill:var(--label-1);transition:fill .25s}
+  .row.sel .badge{background:var(--accent);box-shadow:0 2px 6px color-mix(in srgb,var(--accent) 45%,transparent)}
+  .row.sel .badge svg{fill:var(--on-accent)}
+  .b-red{background:var(--danger-bg)!important;box-shadow:none!important}
+  .b-red svg path{stroke:var(--danger)}
+  /* The selection: a drop of glass behind the chosen row that slides, stretches and settles */
+  .selo{position:absolute;top:0;left:0;z-index:0;border-radius:10px;pointer-events:none;
+    background:var(--fill-selected);
+    backdrop-filter:url(#lente-selo) saturate(180%) brightness(1.05);
+    box-shadow:0 1px 2px rgba(0,0,0,.10), 0 5px 12px rgba(0,0,0,.10), var(--glass-edge);
+    transition:transform .38s var(--ease-liquid), width .38s var(--ease-liquid), height .38s var(--ease-liquid);
+    will-change:transform}
+  .selo::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--luz-quinas);mix-blend-mode:screen;
+    transform:translateX(calc(var(--luz,0) * 18%));opacity:calc(.85 + var(--luz,0) * .15);
+    transition:transform .38s var(--ease-liquid), opacity .24s var(--ease-out)}
+  .no-anim,.no-anim::after{transition:none!important}
 
   /* ---- pane ---- */
-  #pane{flex:1;display:flex;flex-direction:column;min-width:0}
-  #head{height:52px;display:flex;align-items:center;padding-left:24px;position:relative;flex:none}
-  #head h1{font-size:22px;font-weight:600;margin:0}
-  #close{position:absolute;top:0;right:0;width:46px;height:34px;border:0;background:transparent;color:var(--text2);
-    display:grid;place-items:center;border-top-right-radius:8px}
-  #close svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.2}
-  #close:hover{background:#c42b1c;color:#fff}
-  #strip{margin:0 20px 8px;padding:7px 10px;border-radius:8px;background:var(--danger-bg);color:var(--danger);font-size:12px;overflow-wrap:anywhere}
-  #body{flex:1;overflow:auto;padding:0 20px 20px;scrollbar-width:none}
+  #pane{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+  /* The title bar floats over the scrolling content, so what scrolls passes under the glass */
+  #head{position:absolute;left:0;right:0;top:0;height:50px;z-index:30;border-radius:16px;
+    display:flex;align-items:center;padding:0 10px 0 18px}
+  #head h1{font-size:16px;font-weight:650;margin:0;flex:1;letter-spacing:-.1px}
+  #close{width:30px;height:30px;border:0;border-radius:50%;display:grid;place-items:center;flex:none;
+    background:var(--fill-1);color:var(--label-2);box-shadow:var(--borda-controle);
+    transition:background .15s,color .15s,transform .14s var(--ease-spring)}
+  #close svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
+  #close:hover{background:#ff453a;color:#fff;box-shadow:none}
+  #close:active{transform:scale(.92)}
+  #strip{position:absolute;top:58px;left:6px;right:6px;z-index:25;padding:8px 12px;border-radius:12px;
+    background:var(--danger-bg);color:var(--danger);font-size:12px;overflow-wrap:anywhere;
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--danger) 30%,transparent);backdrop-filter:blur(20px) saturate(180%)}
+  #body{flex:1;overflow:auto;padding:62px 6px 20px;scrollbar-width:none;border-radius:16px}
   #body::-webkit-scrollbar{display:none}
 
-  .sec{font-size:13.5px;font-weight:600;margin:18px 12px 8px}
-  .pane > .sec:first-child{margin-top:6px}
-  .group{background:var(--group);border:1px solid var(--line);border-radius:10px;box-shadow:inset 0 1px 0 var(--hi)}
-  .group + .group{margin-top:14px}
-  .pane > .group:first-child{margin-top:6px}
-  .group > * + *{border-top:1px solid var(--sep)}
-  .item{padding:9px 12px;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-  .item.cap{min-height:0;padding:8px 12px;font-size:12px;color:var(--text2);display:block}
-  .item .hint{font-size:12px;color:var(--text2)}
-  .value{color:var(--text2)}
+  .sec{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.6px;color:var(--label-2);margin:22px 14px 8px}
+  .pane > .sec:first-child{margin-top:4px}
+  /* A group is content: nearly opaque, with the gloss on top and the rim, never the lens */
+  .group{position:relative;isolation:isolate;background:var(--surface-1);border-radius:16px;box-shadow:var(--shadow-1),var(--glass-edge)}
+  .group::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--luz-espelho);mix-blend-mode:screen;pointer-events:none;z-index:-1}
+  .group + .group{margin-top:12px}
+  .pane > .group:first-child{margin-top:4px}
+  /* Rows are divided by hairlines; a caption belongs to the row above it, so no line before it */
+  .group > * + *:not(.cap){box-shadow:inset 0 1px 0 var(--sep)}
+  .item{padding:10px 16px;min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:14px;font-weight:500}
+  .item.cap{min-height:0;padding:0 16px 12px;margin-top:-6px;font-size:12px;font-weight:400;line-height:1.45;color:var(--label-2);display:block}
+  .group > .item.cap:first-child{margin-top:0;padding-top:12px}
+  .item .hint{font-size:12px;font-weight:400;line-height:1.45;color:var(--label-2)}
+  .value{color:var(--label-2);font-variant-numeric:tabular-nums}
 
   /* ---- account rows ---- */
-  .acct{padding:9px 12px}
-  .acct-line{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:24px}
-  .acct-name{display:flex;align-items:center;gap:10px;min-width:0}
-  .acct.off .acct-name{color:var(--text2)}
-  .acct.off .glyph{opacity:.5}
-  .acct-detail{margin:4px 0 0 26px;font-size:12px;color:var(--text2)}
-  .acct-sub{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 0 26px;font-size:13px}
-  .glyph{width:16px;height:16px;display:inline-grid;place-items:center;flex:none;color:var(--text)}
+  .acct{padding:11px 16px}
+  .acct-line{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
+  .acct-name{display:flex;align-items:center;gap:11px;min-width:0;font-weight:600}
+  .acct.off .acct-name{color:var(--label-2);font-weight:500}
+  .acct.off .glyph{opacity:.55}
+  .acct-detail{margin:3px 0 0 39px;font-size:12px;line-height:1.45;color:var(--label-2)}
+  .acct-sub{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 0 39px;padding-top:10px;
+    box-shadow:inset 0 1px 0 var(--sep);font-size:13px}
+  .glyph{width:28px;height:28px;border-radius:8px;display:inline-grid;place-items:center;flex:none;color:var(--label-1);
+    background:var(--fill-1);box-shadow:var(--borda-controle)}
   .glyph svg{width:16px;height:16px;fill:currentColor}
-  .glyph img{width:16px;height:16px;border-radius:4px;display:block}
-  .glyph.letter{font-size:10px;font-weight:700;background:var(--seg-bg);border-radius:4px}
+  .glyph img{width:18px;height:18px;border-radius:4px;display:block}
+  .glyph.letter{font-size:11px;font-weight:700}
 
-  /* ---- controls: Windows 11 cues in the system accent ---- */
-  .switch{width:40px;height:20px;border-radius:10px;border:1px solid var(--text2);background:transparent;position:relative;flex:none;padding:0}
-  .switch::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:6px;background:var(--text2);transition:left .12s}
-  .switch.on{border-color:transparent;background:var(--accent)}
-  .switch.on::after{left:23px;background:var(--on-accent)}
-  .switch:disabled,.switch.locked{opacity:.5}
-  .seg{display:inline-flex;background:var(--seg-bg);border-radius:7px;padding:2px;gap:2px;flex:none}
-  .seg button{border:0;background:transparent;font-size:13px;padding:3px 14px;border-radius:5px}
-  .seg button:hover:not(.on):not(:disabled){background:var(--hover)}
-  .seg button.on{background:var(--accent);color:var(--on-accent)}
+  /* ---- controls ---- */
+  /* Switch: a capsule in the system accent with a white knob that springs across */
+  .switch{position:relative;width:42px;height:25px;border-radius:13px;border:0;padding:0;flex:none;cursor:default;
+    background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--sep), inset 0 1px 2px rgba(0,0,0,.18);transition:background .25s ease}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:11px;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.16);transition:transform .34s var(--ease-spring), width .18s ease}
+  .switch.on{background:var(--accent);box-shadow:inset 0 1px 2px rgba(0,0,0,.12)}
+  .switch.on::after{transform:translateX(17px)}
+  .switch:active:not(:disabled)::after{width:25px}
+  .switch.on:active:not(:disabled)::after{transform:translateX(13px)}
+  .switch:disabled,.switch.locked{opacity:.45}
+  /* Segmented control: the chosen option sits on a raised glass thumb that slides between them */
+  .seg{position:relative;display:inline-flex;background:var(--fill-1);border-radius:10px;padding:2px;flex:none;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.14)}
+  .seg button{position:relative;z-index:1;border:0;background:transparent;font-size:12.5px;font-weight:500;padding:4px 13px;border-radius:8px;
+    color:var(--label-2);transition:color .2s}
+  .seg button:hover:not(.on):not(:disabled){color:var(--label-1)}
+  .seg button.on{color:var(--label-1)}
   .seg button:disabled{opacity:.45}
-  .btn{border:0;background:var(--btn);font-size:13px;padding:5px 12px;border-radius:6px;flex:none}
-  .btn:hover{background:var(--btn-hover)}
-  select{font:inherit;font-size:13px;color:var(--text);background:var(--seg-bg);border:0;border-radius:6px;padding:4px 8px}
-  select option{color:#000}
-  .link{border:0;background:none;padding:0;color:var(--accent);cursor:pointer;font-size:12px}
+  .seg .thumb{position:absolute;top:2px;left:0;height:calc(100% - 4px);z-index:0;border-radius:8px;pointer-events:none;
+    background:var(--thumb);box-shadow:var(--thumb-shadow);opacity:0;
+    transition:transform .38s var(--ease-liquid), width .38s var(--ease-liquid), opacity .2s}
+  .seg .thumb.shown{opacity:1}
+  .btn{position:relative;isolation:isolate;border:0;background:var(--fill-1);font-size:12.5px;font-weight:500;padding:6px 14px;border-radius:9px;flex:none;
+    box-shadow:var(--borda-controle);transition:background .15s, transform .14s var(--ease-spring)}
+  .btn::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--luz-controle);mix-blend-mode:screen;pointer-events:none;z-index:-1}
+  .btn:hover{background:color-mix(in srgb,var(--fill-1) 100%,var(--label-1) 6%)}
+  .btn:active{transform:scale(.96)}
+  select{font:inherit;font-size:12.5px;font-weight:500;color:var(--label-1);background:var(--fill-1) var(--chev) no-repeat right 10px center;
+    border:0;border-radius:9px;padding:5px 28px 5px 11px;-webkit-appearance:none;appearance:none;box-shadow:var(--borda-controle);max-width:220px}
+  select:hover{background-color:color-mix(in srgb,var(--fill-1) 100%,var(--label-1) 6%)}
+  select option{color:#000;background:#fff}
+  .link{border:0;background:none;padding:0;color:var(--accent);cursor:pointer;font-size:12px;font-weight:500}
   .link:hover{text-decoration:underline}
 
-  #toast{position:fixed;right:18px;bottom:14px;background:var(--side);border:1px solid var(--line);border-radius:8px;
-    padding:5px 10px;font-size:12px;color:var(--text2);opacity:0;transition:opacity .3s;pointer-events:none}
-  #toast.show{opacity:1}
+  #toast{position:fixed;left:calc(50% + 111px);bottom:18px;transform:translate(-50%,10px) scale(.96);
+    background:var(--surface-toast);backdrop-filter:blur(30px) saturate(190%);border-radius:999px;
+    padding:7px 14px 7px 12px;font-size:12.5px;font-weight:500;color:var(--label-1);
+    box-shadow:var(--shadow-3),var(--glass-edge);display:flex;align-items:center;gap:7px;
+    opacity:0;transition:opacity .22s var(--ease-out), transform .3s var(--ease-spring);pointer-events:none;z-index:60}
+  #toast::after{content:"";order:-1;width:14px;height:14px;border-radius:50%;flex:none;
+    background:#30d158 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><path d='M1.5 4.2l1.7 1.6L6.5 2.4' fill='none' stroke='white' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat center}
+  #toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
+
+  @media (prefers-reduced-transparency: reduce){
+    .glass-surface,.glass-painel,.selo,#toast,#strip{backdrop-filter:none}
+    .glass-surface{background:var(--surface-1)}
+    .glass-surface::after,.selo::after,.liquid::before,.group::before,.group::after,#toast::before{display:none}
+    .glass-surface,.group{box-shadow:inset 0 0 0 1px var(--sep)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+    .row:active,.btn:active,#close:active{transform:none}
+  }
 </style>
 </head>
 <body>
 <div id="app">
-  <nav id="side" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
-    <div class="band" data-tauri-drag-region></div>
+  <svg id="lenses" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute"><defs></defs></svg>
+  <nav id="side" class="glass-surface glass-painel liquid" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+    <div class="brand" data-tauri-drag-region><span class="logo" aria-hidden="true"></span><div data-tauri-drag-region><div class="brand-name" data-dynamic>Codenotch</div><div class="brand-ver" id="side-version" data-dynamic></div></div></div>
+    <div class="nav"><span class="selo" id="side-selo" aria-hidden="true"></span>
     <button class="row" id="tab-accounts" role="tab" aria-controls="pane-accounts" aria-selected="false" tabindex="-1"><span class="badge b-blue"><svg viewBox="0 0 12 12"><circle cx="6" cy="4" r="2.4"/><path d="M1.5 11.2c.4-2.5 2.3-3.9 4.5-3.9s4.1 1.4 4.5 3.9z"/></svg></span><span>Accounts</span></button>
     <button class="row" id="tab-appearance" role="tab" aria-controls="pane-appearance" aria-selected="false" tabindex="-1"><span class="badge b-indigo"><svg viewBox="0 0 12 12"><path d="M10 .9a.8.8 0 0 1 1.1 1.1L6.4 6.7 5.3 5.6zM4.6 6.3l1.1 1.1c.2 1.9-1.9 3.6-4.7 3.1.9-.4 1.2-1 1.3-1.8.1-1.3 1.1-2.3 2.3-2.4z"/></svg></span><span>Appearance</span></button>
-    <button class="row" id="tab-general" role="tab" aria-controls="pane-general" aria-selected="false" tabindex="-1"><span class="badge b-gray"><svg viewBox="0 0 12 12"><path fill-rule="evenodd" d="M5.1.6h1.8l.3 1.5 1.1.5 1.3-.8 1.3 1.3-.8 1.3.5 1.1 1.5.3v1.8l-1.5.3-.5 1.1.8 1.3-1.3 1.3-1.3-.8-1.1.5-.3 1.5H5.1l-.3-1.5-1.1-.5-1.3.8-1.3-1.3.8-1.3-.5-1.1L.6 6.9V5.1l1.5-.3.5-1.1-.8-1.3 1.3-1.3 1.3.8 1.1-.5zM6 4.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"/></svg></span><span>General</span></button>
+    <button class="row" id="tab-general" role="tab" aria-controls="pane-general" aria-selected="false" tabindex="-1"><span class="badge b-gray"><svg viewBox="0 0 12 12"><path fill-rule="evenodd" d="M5.1.6h1.8l.3 1.5 1.1.5 1.3-.8 1.3 1.3-.8 1.3.5 1.1 1.5.3v1.8l-1.5.3-.5 1.1.8 1.3-1.3 1.3-1.3-.8-1.1.5-.3 1.5H5.1l-.3-1.5-1.1-.5-1.3.8-1.3-1.3.8-1.3-.5-1.1L.6 6.9V5.1l1.5-.3.5-1.1-.8-1.3 1.3-1.3 1.3.8 1.1-.5zM6 4.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"/></svg></span><span>General</span></button></div>
     <div class="grow" data-tauri-drag-region></div>
     <button class="row" id="quit"><span class="badge b-red"><svg viewBox="0 0 12 12"><path d="M6 1.2v4.3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none"/><path d="M3.4 3.1a3.9 3.9 0 1 0 5.2 0" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></span><span>Quit Codenotch</span></button>
   </nav>
 
   <main id="pane">
-    <div id="head" data-tauri-drag-region>
+    <div id="head" class="glass-surface liquid" data-tauri-drag-region>
       <h1 id="title" data-tauri-drag-region data-dynamic>Accounts</h1>
       <button id="close" title="Close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9"/></svg></button>
     </div>
@@ -1235,9 +1385,118 @@ document.getElementById('author').addEventListener('click', () => {
   const api = window.__TAURI__ && window.__TAURI__.app;
   const el = document.getElementById('about-version');
   if(!api || typeof api.getVersion !== 'function') return;
-  try { Promise.resolve(api.getVersion()).then(v => { if(typeof v === 'string' && v) el.textContent = v; }).catch(() => {}); }
+  try { Promise.resolve(api.getVersion()).then(v => {
+    if(typeof v === 'string' && v){ el.textContent = v; document.getElementById('side-version').textContent = v; }
+  }).catch(() => {}); }
   catch(e) { /* the built-in number stays */ }
 })();
+
+/* ---- glass ------------------------------------------------------------------
+   The lenses, the sliding selection in the sidebar and the thumb under every segmented control.
+   Pure presentation: each watches the classes the code above already sets (.sel on the chosen tab,
+   .on on the chosen option) and follows them, so no renderer had to learn about any of it. */
+
+/* One SVG displacement lens per shape of glass (LIQUID-GLASS.md §4): the map stretches with the
+   element, so a tall sidebar and a wide title bar each need their own. R moves in X, G in Y, 128 is
+   neutral, and each gradient paints one channel only, so the centre stays still and the rim bends. */
+function lensMap(w, h, r, fx, fy){
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='" + w + "' height='" + h + "'><defs>"
+    + "<linearGradient id='x' x1='0' x2='1'><stop offset='0' stop-color='rgb(255,0,0)'/><stop offset='" + fx + "' stop-color='rgb(128,0,0)'/>"
+    + "<stop offset='" + (1 - fx) + "' stop-color='rgb(128,0,0)'/><stop offset='1' stop-color='rgb(0,0,0)'/></linearGradient>"
+    + "<linearGradient id='y' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='rgb(0,255,0)'/><stop offset='" + fy + "' stop-color='rgb(0,128,0)'/>"
+    + "<stop offset='" + (1 - fy) + "' stop-color='rgb(0,128,0)'/><stop offset='1' stop-color='rgb(0,0,0)'/></linearGradient></defs>"
+    + "<rect width='" + w + "' height='" + h + "' rx='" + r + "' fill='url(#x)'/>"
+    + "<rect width='" + w + "' height='" + h + "' rx='" + r + "' fill='url(#y)' style='mix-blend-mode:screen'/></svg>");
+}
+(function buildLenses(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const defs = document.querySelector('#lenses defs');
+  const LENSES = [
+    { id:'lente-selo',   w:190, h:36,  r:10, fx:.16,  fy:.28,  blur:2.5, scale:12 },  // sidebar selection
+    { id:'lente-barra',  w:440, h:50,  r:16, fx:.02,  fy:.26,  blur:2,   scale:26 },  // title bar: wide and low
+    { id:'lente-painel', w:212, h:500, r:18, fx:.07,  fy:.022, blur:2,   scale:30 },  // sidebar: tall and narrow
+  ];
+  for(const l of LENSES){
+    const f = document.createElementNS(NS, 'filter');
+    f.setAttribute('id', l.id); f.setAttribute('x', '0'); f.setAttribute('y', '0');
+    f.setAttribute('width', '100%'); f.setAttribute('height', '100%');
+    f.setAttribute('color-interpolation-filters', 'sRGB');
+    const img = document.createElementNS(NS, 'feImage');
+    img.setAttribute('x', '0'); img.setAttribute('y', '0'); img.setAttribute('width', l.w); img.setAttribute('height', l.h);
+    img.setAttribute('preserveAspectRatio', 'none'); img.setAttribute('result', 'map');
+    img.setAttribute('href', lensMap(l.w, l.h, l.r, l.fx, l.fy));
+    const blur = document.createElementNS(NS, 'feGaussianBlur');
+    blur.setAttribute('in', 'map'); blur.setAttribute('stdDeviation', l.blur); blur.setAttribute('result', 'soft');
+    const disp = document.createElementNS(NS, 'feDisplacementMap');
+    disp.setAttribute('in', 'SourceGraphic'); disp.setAttribute('in2', 'soft'); disp.setAttribute('scale', l.scale);
+    disp.setAttribute('xChannelSelector', 'R'); disp.setAttribute('yChannelSelector', 'G');
+    f.append(img, blur, disp);
+    defs.appendChild(f);
+  }
+})();
+
+/* The sidebar's selection does not blink to the new row, it flows there: stretched along the way in
+   proportion to the distance (capped at 18 %, past that it reads as rubber), its reflection trailing
+   a beat behind, then settling. A resize puts it back without animating. */
+const selo = document.getElementById('side-selo');
+const nav = selo.parentElement;
+let seloAt = null, seloTimer = null;
+function moveSelo(animate){
+  const t = nav.querySelector('.row.sel');
+  if(!t || !t.offsetWidth){ selo.hidden = true; return; }
+  selo.hidden = false;
+  const pose = { x:t.offsetLeft, y:t.offsetTop, w:t.offsetWidth, h:t.offsetHeight };
+  const still = !animate || !seloAt || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const s = still ? 0 : Math.min(0.18, Math.abs(pose.y - seloAt.y) / 400);
+  selo.classList.toggle('no-anim', still);
+  selo.style.width = pose.w + 'px';
+  selo.style.height = pose.h + 'px';
+  const at = 'translate3d(' + pose.x + 'px,' + pose.y + 'px,0)';
+  clearTimeout(seloTimer);
+  if(s > 0.005){
+    selo.style.transform = at + ' scale(' + (1 - s * 0.45) + ',' + (1 + s) + ')';
+    selo.style.setProperty('--luz', '1');
+    // let go of the stretch before the move ends, so it settles instead of stopping stretched
+    seloTimer = setTimeout(() => { selo.style.transform = at; selo.style.setProperty('--luz', '0'); }, 210);
+  } else {
+    selo.style.transform = at;
+  }
+  seloAt = pose;
+  if(still) requestAnimationFrame(() => requestAnimationFrame(() => selo.classList.remove('no-anim')));
+}
+for(const row of nav.querySelectorAll('.row')){
+  new MutationObserver(() => moveSelo(true)).observe(row, { attributes:true, attributeFilter:['class'] });
+}
+new ResizeObserver(() => moveSelo(false)).observe(nav);
+
+/* Segmented controls: a raised thumb under the chosen option, sliding to the next one with the same
+   overshoot. It follows the .on class, and re-measures when a translation changes the widths. */
+function setupSeg(seg){
+  const thumb = document.createElement('span');
+  thumb.className = 'thumb';
+  thumb.setAttribute('aria-hidden', 'true');
+  seg.prepend(thumb);
+  let placed = false;
+  const place = () => {
+    const on = seg.querySelector('button.on');
+    if(!on || !on.offsetWidth){ thumb.classList.remove('shown'); placed = false; return; }
+    if(!placed) thumb.classList.add('no-anim');
+    thumb.style.width = on.offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+    thumb.classList.add('shown');
+    if(!placed){
+      placed = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => thumb.classList.remove('no-anim')));
+    }
+  };
+  for(const b of seg.querySelectorAll('button')){
+    new MutationObserver(place).observe(b, { attributes:true, attributeFilter:['class'] });
+  }
+  new ResizeObserver(place).observe(seg);
+  place();
+}
+document.querySelectorAll('.seg').forEach(setupSeg);
 
 /* ---- start ---------------------------------------------------------------- */
 function renderAll(){
