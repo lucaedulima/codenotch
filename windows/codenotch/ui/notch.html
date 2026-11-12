@@ -9,15 +9,47 @@
   body{font-family:"Segoe UI",system-ui,sans-serif;color:#fff}
   #root{position:relative;width:100%;height:100%}
 
+  /* ---- Glass ---------------------------------------------------------------
+     Liquid Glass, as far as a transparent WebView2 window can take it: backdrop-filter only ever
+     blurs this page, never the desktop behind the window, so the glass is simulated rather than
+     sampled. A smoked translucent body, a hairline edge, a specular highlight on the side facing
+     the light and a soft shadow; three thicknesses (Apple's "clear / regular / thick"), chosen in
+     Settings and set on <body data-glass>. Nothing here animates on its own: a continuous animation
+     in this always-on-top window slows the whole compositor (see the arc rules below). */
+  :root{
+    --glass-a:.72;
+    --glass:rgba(16,16,20,var(--glass-a));
+    --glass-card:rgba(14,14,18,calc(var(--glass-a) + .16));
+    --edge:rgba(255,255,255,.15);
+    --hi:rgba(255,255,255,.20);
+    --spec-at:0% 50%;
+    --track:rgba(255,255,255,.12);
+    --well:rgba(255,255,255,.055);
+    --peek:6px;
+  }
+  body[data-glass="clear"]{--glass-a:.46;--edge:rgba(255,255,255,.22);--hi:rgba(255,255,255,.28)}
+  body[data-glass="solid"]{--glass-a:.93;--edge:rgba(255,255,255,.11);--hi:rgba(255,255,255,.14)}
+  body[data-edge="left"]{--spec-at:100% 50%}
+  body[data-edge="top"]{--spec-at:50% 100%}
+  body[data-edge="bottom"]{--spec-at:50% 0%}
+  /* Windows' transparency effects switch off: the glass goes solid, as Reduce Transparency does */
+  @media (prefers-reduced-transparency: reduce){ :root,body[data-glass]{--glass-a:.97} }
+  @media (prefers-contrast: more){ :root,body[data-glass]{--glass-a:1;--edge:rgba(255,255,255,.6)} }
+
   /* The pill on the right edge */
   #pill{
     position:absolute;right:0;top:50%;transform:translateY(-50%);
-    width:70px;padding:18px 0;background:#000;
+    width:70px;padding:18px 0;
+    /* The highlight sits on the side away from the screen edge, so it never meets a fillet and leaves no seam */
+    background:radial-gradient(130% 55% at var(--spec-at), rgba(255,255,255,.13), rgba(255,255,255,0) 70%), var(--glass);
     border-radius:20px 0 0 20px;
     /* Stays visible on dark wallpapers: a thin stroke plus a faint glow, the only outline when black sits on black */
-    border:1px solid #2e2e2e;border-right:none;
-    box-shadow:none;
+    border:1px solid var(--edge);border-right:none;
+    box-shadow:inset 1px 0 0 var(--hi), 0 6px 22px rgba(0,0,0,.22);
     display:flex;flex-direction:column;align-items:center;gap:14px;cursor:pointer;
+    /* Auto-hide slides the pill, never the window: a transform is the one thing the compositor
+       animates without repainting the page */
+    transition:transform .24s cubic-bezier(.2,.8,.2,1), border-color .24s ease;
   }
   /* Fillets: the concave arcs between the pill's top/bottom and the screen edge (the inverse rounded
      corner in the upstream design frame). An R×R black square hugs the edge and a radial gradient
@@ -31,15 +63,16 @@
   #pill{--fillet:38.7px}
   #pill::before{
     top:calc(-1 * var(--fillet)); /* covers the 1 px stroke along the pill's top edge so there is no seam */
-    background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px));
+    background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px));
   }
   #pill::after{
     bottom:calc(-1 * var(--fillet));
-    background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px));
+    background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px));
   }
   .cell{display:flex;flex-direction:column;align-items:center;gap:6px}
   .ringwrap{position:relative;width:56px;height:56px;transition:transform .3s cubic-bezier(.34,1.4,.64,1)}
-  .ringwrap.pressed{transform:scale(.93)}
+  .cell:hover .ringwrap{transform:scale(1.045)}
+  .ringwrap.pressed,.cell:hover .ringwrap.pressed{transform:scale(.93)}
   .ringwrap > svg.ring,.ringwrap > svg.reading,.ringwrap > svg.activity{position:absolute;inset:0;overflow:visible} /* pins only the ring itself; an inline logo svg must not match this or it ends up in the top-left corner */
   .glyph{
     position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -77,7 +110,10 @@
     /* Anchored on both sides = fluid width: whatever the WebView's real logical width, the card cannot
        extend past the window's left edge (a fixed max-width got clipped when the DPI disagreed).
        The 246 cap matches the upstream spec. */
-    max-width:246px;margin-left:auto;background:#0a0a0a;border-radius:16px;padding:16px;
+    max-width:246px;margin-left:auto;border-radius:18px;padding:16px;
+    background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%), var(--glass-card);
+    border:1px solid var(--edge);
+    box-shadow:inset 0 1px 0 var(--hi), 0 14px 40px rgba(0,0,0,.38);
     overflow-wrap:anywhere;min-width:0;
     max-height:calc(100% - 16px);overflow:hidden; /* never taller than the window, however short it is */
     display:none;
@@ -88,7 +124,7 @@
      than ::after, so the card's overflow cannot clip it and it can be reported as hot. It spans the
      whole gap, its tip tucked 1 px under the pill's edge so the two meet. */
   #tail{
-    position:absolute;right:69px;width:32px;height:36px;background:#0a0a0a;display:none;
+    position:absolute;right:69px;width:32px;height:36px;background:var(--glass-card);display:none;
     clip-path:path('M0 0C0 9 18.56 13.68 32 18C18.56 22.32 0 27 0 36Z');
   }
   #card.show + #tail{display:block}
@@ -99,13 +135,13 @@
   .w-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;flex-wrap:wrap;column-gap:8px}
   .w-label{color:#e8e8ea;font-weight:600;white-space:nowrap}
   .w-reset{color:#808080;font-size:11px;white-space:nowrap;margin-left:auto} /* wrap as a whole when it does not fit; never break inside a word */
-  .w-track{height:4px;border-radius:2px;background:#2d2d2d;margin:6px 0 4px;overflow:hidden}
+  .w-track{height:4px;border-radius:2px;background:var(--track);margin:6px 0 4px;overflow:hidden}
   .w-fill{height:100%;border-radius:2px}
   .w-used{font-size:11px;color:#808080}
   .g-head{font-size:12px;font-weight:700;color:#e8e8ea;margin-top:12px}
-  .g-box{border:1px solid #242424;border-radius:10px;padding:0 10px 8px;margin-top:6px}
+  .g-box{border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:0 10px 8px;margin-top:6px}
   .c-note{font-size:12px;color:#c8c8c8;line-height:1.5;margin-top:6px}
-  .c-sessions{margin-top:12px;border-top:1px solid #1e1e1e;padding-top:8px}
+  .c-sessions{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px}
   .s-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#b0b0b3;padding:2px 0}
   .s-dot{width:6px;height:6px;border-radius:3px;flex:0 0 auto}
   .s-more{font-size:11px;color:#808080;padding:2px 0}
@@ -121,10 +157,10 @@
      is the concave arc between the two. */
 
   /* Left: the right-hand layout mirrored. */
-  body[data-edge="left"] #pill{right:auto;left:0;border-radius:0 20px 20px 0;border-right:1px solid #2e2e2e;border-left:none}
+  body[data-edge="left"] #pill{right:auto;left:0;border-radius:0 20px 20px 0;border-right:1px solid var(--edge);border-left:none}
   body[data-edge="left"] #pill::before,body[data-edge="left"] #pill::after{right:auto;left:0}
-  body[data-edge="left"] #pill::before{background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
-  body[data-edge="left"] #pill::after{background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
+  body[data-edge="left"] #pill::before{background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
+  body[data-edge="left"] #pill::after{background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
   body[data-edge="left"] #card{left:100px;right:10px;margin-left:0;margin-right:auto}
   body[data-edge="left"] #tail{right:auto;left:69px;clip-path:path('M32 0C32 9 13.44 13.68 0 18C13.44 22.32 32 27 32 36Z')}
 
@@ -137,11 +173,11 @@
   body[data-edge="top"] #pill::before,body[data-edge="top"] #pill::after,
   body[data-edge="bottom"] #pill::before,body[data-edge="bottom"] #pill::after{right:auto;top:auto;bottom:auto}
   body[data-edge="top"] #pill{top:0;border-radius:0 0 20px 20px;border-top:none}
-  body[data-edge="top"] #pill::before{top:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
-  body[data-edge="top"] #pill::after{top:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
+  body[data-edge="top"] #pill::before{top:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
+  body[data-edge="top"] #pill::after{top:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 100%, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
   body[data-edge="bottom"] #pill{bottom:0;border-radius:20px 20px 0 0;border-bottom:none}
-  body[data-edge="bottom"] #pill::before{bottom:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
-  body[data-edge="bottom"] #pill::after{bottom:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), #2e2e2e calc(var(--fillet) - 0.5px), #000 calc(var(--fillet) + 0.5px))}
+  body[data-edge="bottom"] #pill::before{bottom:0;left:calc(-1 * var(--fillet));background:radial-gradient(circle at 0 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
+  body[data-edge="bottom"] #pill::after{bottom:0;right:calc(-1 * var(--fillet));background:radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - 1.5px), var(--edge) calc(var(--fillet) - 0.5px), var(--glass) calc(var(--fillet) + 0.5px))}
   /* A fixed width here, not the fluid one the upright edges use: `placeCard` measures the card to
      centre it, and a shrink-to-fit width would change as it moves. 246 is the upstream cap either way. */
   body[data-edge="top"] #card,body[data-edge="bottom"] #card{
@@ -162,7 +198,7 @@
   .handle.hover{cursor:pointer}
   .handle > *{position:absolute;left:50%;top:50%;pointer-events:none;transition:opacity .2s,transform .36s cubic-bezier(.34,1.3,.64,1)}
   .h-rest{width:72px;height:72px;margin:-36px 0 0 -36px;overflow:visible;transform:rotate(var(--arc)) scale(1)}
-  .h-disc{width:46.6px;height:46.6px;margin:-23.3px 0 0 -23.3px;border-radius:50%;background:#000;border:1px solid #2e2e2e;opacity:0;transform:scale(1.1)}
+  .h-disc{width:46.6px;height:46.6px;margin:-23.3px 0 0 -23.3px;border-radius:50%;background:var(--glass);border:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--hi);opacity:0;transform:scale(1.1)}
   .h-glyph{width:21px;height:21px;margin:-10.5px 0 0 -10.5px;fill:#e8e8ea;opacity:0;
     transform:rotate(calc(var(--spins,0) * 360deg - 60deg)) scale(.5);transition:opacity .2s,transform .55s cubic-bezier(.34,1.2,.64,1)}
   .handle.hover .h-rest{opacity:0;transform:rotate(var(--arc)) scale(.86)}
@@ -178,6 +214,31 @@
   body[data-edge="left"] #move{--arc:90deg}
   body[data-edge="top"] #move{--arc:270deg}
   @media (prefers-reduced-motion: reduce){.handle > *{transition:none}}
+
+  /* ---- Auto-hide ------------------------------------------------------------
+     Tucked, the pill slides into the screen edge until only --peek of it shows; the pointer on that
+     strip brings it back. The fillets and handles go with it. The transforms repeat the base ones
+     because a transform is one property, not a stack. */
+  body[data-edge="left"] #pill{box-shadow:inset -1px 0 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
+  body[data-edge="top"] #pill{box-shadow:inset 0 -1px 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
+  body[data-edge="bottom"] #pill{box-shadow:inset 0 1px 0 var(--hi), 0 6px 22px rgba(0,0,0,.22)}
+  body.tucked #pill{transform:translateY(-50%) translateX(calc(100% - var(--peek)));border-color:rgba(255,255,255,.34)}
+  body.tucked[data-edge="left"] #pill{transform:translateY(-50%) translateX(calc(-100% + var(--peek)))}
+  body.tucked[data-edge="top"] #pill{transform:translateX(-50%) translateY(calc(-100% + var(--peek)))}
+  body.tucked[data-edge="bottom"] #pill{transform:translateX(-50%) translateY(calc(100% - var(--peek)))}
+  body.tucked .handle{opacity:0;pointer-events:none}
+  .handle{transition:opacity .2s}
+  @media (prefers-reduced-motion: reduce){#pill{transition:none}}
+
+  /* The padlock at the end of the pill: shut = fixed in place, open = auto-hide */
+  .lock{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:11px;
+    color:rgba(255,255,255,.42);transition:color .2s,background .2s,transform .2s cubic-bezier(.34,1.4,.64,1)}
+  .lock:hover{color:#fff;background:rgba(255,255,255,.10);transform:scale(1.08)}
+  .lock:active{transform:scale(.92)}
+  .lock svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .lock .open{display:none}
+  body.autohide .lock .shut{display:none}
+  body.autohide .lock .open{display:block}
 </style>
 </head>
 <body>
@@ -186,8 +247,8 @@
   <div id="tail"></div>
   <div id="move" class="handle">
     <svg class="h-rest" viewBox="-36 -36 72 72" aria-hidden="true">
-      <circle r="28.5" fill="none" stroke="#2e2e2e" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-      <circle r="28.5" fill="none" stroke="#000" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
+      <circle r="28.5" fill="none" style="stroke:var(--edge)" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
+      <circle r="28.5" fill="none" style="stroke:rgba(16,16,20,var(--glass-a))" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
     </svg>
     <div class="h-disc"></div>
     <!-- A hand, as on the Mac: the gesture is a carry, not a nudge, which is what arrows would say -->
@@ -197,8 +258,8 @@
   </div>
   <div id="orb" class="handle">
     <svg class="h-rest" viewBox="-36 -36 72 72" aria-hidden="true">
-      <circle r="28.5" fill="none" stroke="#2e2e2e" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
-      <circle r="28.5" fill="none" stroke="#000" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
+      <circle r="28.5" fill="none" style="stroke:var(--edge)" stroke-width="8.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
+      <circle r="28.5" fill="none" style="stroke:rgba(16,16,20,var(--glass-a))" stroke-width="6.8" stroke-linecap="round" stroke-dasharray="44.77 179.07"/>
     </svg>
     <div class="h-disc"></div>
     <svg class="h-glyph" viewBox="0 0 12 12" aria-hidden="true"><path fill-rule="evenodd" d="M5.1.6h1.8l.3 1.5 1.1.5 1.3-.8 1.3 1.3-.8 1.3.5 1.1 1.5.3v1.8l-1.5.3-.5 1.1.8 1.3-1.3 1.3-1.3-.8-1.1.5-.3 1.5H5.1l-.3-1.5-1.1-.5-1.3.8-1.3-1.3.8-1.3-.5-1.1L.6 6.9V5.1l1.5-.3.5-1.1-.8-1.3 1.3-1.3 1.3.8 1.1-.5zM6 4.1a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z"/></svg>
@@ -208,13 +269,16 @@
 </div>
 <script>
 const invoke = window.__TAURI__.core.invoke;
+// Auto-hide state, read by reportHot from the first render on
+let autoHide=false, tucked=false, tuckTimer=null;
+const LOCK_HTML=`<div class="lock" title="Fixed in place: click to auto-hide"><svg class="shut" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><svg class="open" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/></svg></div>`;
 const listen = window.__TAURI__.event.listen;
 
 /* Colour ramp (upstream palette values) */
 const AMPLE='#00FF88', WATCH='#F2FF00', CRIT='#FF3F00';
 // The status arc is neutral on purpose: the ring behind it is coloured by how much of the limit
 // is gone, and a green arc inside it reads as part of that scale. Waiting borrows the warning yellow.
-const TRACK='#303030', INK='#ffffff', DIM='#808080';
+const TRACK='rgba(255,255,255,.13)', INK='#ffffff', DIM='#808080';
 const tone=f=> f>=0.8?CRIT : f>=0.5?WATCH : AMPLE;
 // Whole percents, except where rounding would read as nothing used or nothing left, as the Mac's Percent does
 function smallPct(v){
@@ -241,6 +305,8 @@ let cursorSnap={status:'absent',windows:[],fetched_at:0,note:''};
 // Grok Build credits, from the Grok CLI's own session; absent until that CLI is signed in
 let grokSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let agSnap={status:'absent',windows:[],fetched_at:0,note:''};
+// The Gemini app's usage page, read by Rust in a WebView of its own; needsAuth until signed in there
+let gaSnap={status:'absent',windows:[],fetched_at:0,note:''};
 let glyphs={}; // id → {kind:'mark'|'appicon', url}
 let activity=[]; // working state of the non-Claude providers: {provider,state:'busy'|'waiting',name,detail,since}
 /* Which screen edge the notch is pinned to. Rust owns it (it is what placed the window); the page is
@@ -651,7 +717,7 @@ function workState(id){
   return 'idle';
 }
 function glyphHtml(p,small){
-  const g=glyphs[p.base||p.id];
+  const g=glyphs[p.mark||p.base||p.id];
   if(g&&g.kind==='svg'&&g.svg) return `<span class="mark">${g.svg}</span>`;
   if(g&&g.url) return `<img class="${g.kind}" src="${g.url}" alt="${p.name}"${small?' style="width:16px;height:16px;border-radius:4px"':''}>`;
   return small?'':p.glyph; // fallback letter
@@ -692,6 +758,7 @@ function providers(){
   if(cursorSnap.status!=='absent') list.push({id:'cursor',base:'cursor',name:'Cursor',glyph:'Cu',snap:cursorSnap});
   if(grokSnap.status!=='absent') list.push({id:'grok',base:'grok',name:'Grok',glyph:'Gk',snap:grokSnap});
   if(agSnap.status!=='absent') list.push({id:'gemini',base:'gemini',name:'Antigravity',glyph:'Ag',snap:agSnap});
+  if(gaSnap.status!=='absent') list.push({id:'geminiapp',base:'geminiapp',mark:'geminiapp',name:'Gemini',glyph:'G',snap:gaSnap});
   if(Array.isArray(notchSlots)&&notchSlots.length){
     const picked=list.filter(p=>!!slotFor(p.base));
     // Never leave the notch with nothing in it: an empty result means the choice no longer matches
@@ -721,6 +788,7 @@ function headlineOf(snap,id){
   if(id==='codex') return ws[0];
   if(id==='cursor') return byId('included')||byId('api');
   if(id==='grok') return byId('credits')||ws[0];
+  if(id==='geminiapp') return byId('session')||byId('weekly');
   const fam=ws.filter(w=>laneFamily(w)===agPrefs.model), lanes=fam.length?fam:ws;
   if(agPrefs.limit!=='automatic'){ const w=tightestOf(lanes.filter(w=>laneIs(w,agPrefs.limit))); if(w) return w; }
   return tightestOf(lanes.filter(w=>w.used<1))||tightestOf(lanes)||lanes[0];
@@ -734,6 +802,7 @@ function weeklyOf(snap,id){
   if(id==='codex') return byId('secondary');
   if(id==='cursor') return null;
   if(id==='grok') return null; // the credits window is already the weekly one
+  if(id==='geminiapp') return byId('weekly');
   const fam=ws.filter(w=>laneFamily(w)===agPrefs.model), lanes=fam.length?fam:ws;
   return tightestOf(lanes.filter(w=>laneIs(w,'weekly')));
 }
@@ -758,18 +827,19 @@ function svgArc(r,frac,color,width,extra=''){
 function renderRing(){
   const ps=providers();
   // Rebuild the DOM only when the structure changes (never swap the element under the cursor)
-  const want=ps.map(p=>p.id+':'+(glyphs[p.base]?glyphs[p.base].kind:'-')).join(',');
+  const want=ps.map(p=>p.id+':'+(glyphs[p.mark||p.base]?glyphs[p.mark||p.base].kind:'-')).join(',');
   if(pill.dataset.cells!==want){
     pill.innerHTML=ps.map(p=>`<div class="cell" data-p="${p.id}">
-      <div class="ringwrap"><svg class="ring" viewBox="0 0 56 56"></svg><svg class="reading" viewBox="0 0 56 56"></svg><svg class="activity" viewBox="0 0 56 56"></svg><div class="glyph ${(!glyphs[p.base]&&p.glyph.length>1)?'small':''}">${glyphHtml(p)}</div></div>
-      <div class="pct">—</div></div>`).join('');
+      <div class="ringwrap"><svg class="ring" viewBox="0 0 56 56"></svg><svg class="reading" viewBox="0 0 56 56"></svg><svg class="activity" viewBox="0 0 56 56"></svg><div class="glyph ${(!glyphs[p.mark||p.base]&&p.glyph.length>1)?'small':''}">${glyphHtml(p)}</div></div>
+      <div class="pct">—</div></div>`).join('')+LOCK_HTML;
     pill.dataset.cells=want;
+    const l=pill.querySelector('.lock'); if(l) l.title=autoHide?'Auto-hide on: click to keep the notch in place':'Fixed in place: click to auto-hide';
   }
   for(const p of ps){
     const cell=pill.querySelector(`.cell[data-p="${p.id}"]`); if(!cell) continue;
     const svg=cell.querySelector('svg.ring'), reading=cell.querySelector('svg.reading'), activity=cell.querySelector('svg.activity'), pct=cell.querySelector('.pct'), glyph=cell.querySelector('.glyph'), wrap=cell.querySelector('.ringwrap');
     const h=headlineOf(p.snap,p.base);
-    let inner=`<circle cx="28" cy="28" r="22" fill="#2a2a2a"/><circle cx="28" cy="28" r="25" fill="none" stroke="${TRACK}" stroke-width="5"/>`;
+    let inner=`<circle cx="28" cy="28" r="22" fill="rgba(255,255,255,.055)"/><circle cx="28" cy="28" r="25" fill="none" stroke="${TRACK}" stroke-width="5"/>`;
     wrap.classList.toggle('pressed',!!refreshing[p.id]);
     reading.innerHTML=h && h.count==null?svgArc(25,Math.min(h.used,1),tone(h.used),5):'';
     if(weeklyRing!=='off'){ // the week, thinner and at its own radius, in its own colour: a session at 12% beside a week at 91% is the case this exists for
@@ -838,7 +908,7 @@ function renderCard(){
   let html=`<div class="c-head">${headIcon}<span class="c-title">${ui().title(p.name)}</span></div>`;
   if(staleOf(snap)&&snap.fetched_at) html+=`<div class="c-sub">${textCopy('Updated')} ${ago(snap.fetched_at)}</div>`;
   if(snap.status==='needsAuth'){
-    const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',grok:'Run grok login to see usage.',gemini:'Sign in to Antigravity to see usage.'}[p.base]||'';
+    const who={claude:'Sign in to Claude Code to see usage.',cursor:'Sign in to Cursor to see usage.',codex:'Sign in to Codex to see usage.',grok:'Run grok login to see usage.',gemini:'Sign in to Antigravity to see usage.',geminiapp:'Click the ring to sign in to Gemini.'}[p.base]||'';
     html+=`<div class="c-note">${textCopy(who)}<br>${esc(textCopy(snap.note||''))}</div>`;
   }else if(!snap.windows.length){
     html+=`<div class="c-note">${esc(textCopy(snap.note||'Waiting for first reading…'))}</div>`;
@@ -949,8 +1019,11 @@ function rectOf(el){const r=el.getBoundingClientRect(),k=window.devicePixelRatio
 function reportHot(){
   const open=card.classList.contains('show');
   const rects=open?[rectOf(pill),rectOf(tail),rectOf(card)]:[rectOf(pill)];
-  if(placeHandles()){ rects.push(rectOf(orb)); if(showMove) rects.push(rectOf(moveHandle)); }
-  callq('set_hot',{rects,expanded:open}).catch(()=>{});
+  // Tucked, the pill's rectangle runs off the window and only the strip that shows is inside it,
+  // which is exactly the area that should bring it back; the handles are hidden with it
+  if(placeHandles()&&!tucked){ rects.push(rectOf(orb)); if(showMove) rects.push(rectOf(moveHandle)); }
+  // An auto-hidden pill that is out asks for pointer_left as the card does, so it knows when to go back
+  callq('set_hot',{rects,expanded:open||(autoHide&&!tucked),card:open}).catch(()=>{});
 }
 function armWatchdog(){
   requestAnimationFrame(reportHot); // wait one frame so renderCard's new content is laid out before measuring
@@ -999,6 +1072,9 @@ function pointerInHot(x,y){
 let hideLogged=0;
 document.addEventListener('mousemove',e=>{
   if(dragging)return; // no card while dragging
+  // Tucked: the window only takes the pointer on the strip (Rust gates click-through), so any move is the pointer arriving
+  if(tucked){ reveal(); return; }
+  if(autoHide&&pointerInHot(e.clientX,e.clientY)) clearTimeout(tuckTimer);
   if(carrying) return; // the notch is in hand; the card would only be in the way
   setHovered(onHandle(e.clientX,e.clientY));
   if(hovered){ if(card.classList.contains('show')){ clearTimeout(hideTimer); hideCard(); } return; }
@@ -1014,7 +1090,8 @@ document.addEventListener('mousemove',e=>{
 document.addEventListener('mouseout',e=>{ // relatedTarget null = the cursor left the page
   if(!e.relatedTarget && card.classList.contains('show')){ if(hideLogged++<5) jslog('mouseout left the page -> collapse'); scheduleHide(); }
 });
-listen('pointer_left',()=>{clearTimeout(hideTimer);hideCard();}).catch(()=>{});
+listen('pointer_left',()=>{clearTimeout(hideTimer);hideCard();scheduleTuck();}).catch(()=>{});
+document.addEventListener('mouseout',e=>{ if(!e.relatedTarget) scheduleTuck(); });
 // Card content changes change its height -> report the hot rectangles again
 listen('usage',()=>{if(card.classList.contains('show'))armWatchdog();}).catch(()=>{});
 listen('state',()=>{if(card.classList.contains('show'))armWatchdog();}).catch(()=>{});
@@ -1068,7 +1145,7 @@ document.addEventListener('contextmenu',e=>{
   if(dragging||!pointerInHot(e.clientX,e.clientY)) return;
   invoke('show_notch_menu',{provider:cellAt(e.clientX,e.clientY)||hoverId}).catch(err=>notice('show_notch_menu failed: '+err));
 });
-listen('drag_end',()=>{dragging=false;press=null;reportHot();}).catch(()=>{});
+listen('drag_end',()=>{dragging=false;press=null;reportHot();scheduleTuck();}).catch(()=>{});
 
 function notice(msg){
   const n=document.getElementById('notice');
@@ -1150,7 +1227,7 @@ moveHandle.addEventListener('mousedown',e=>{
   clearTimeout(hideTimer); hideCard();
   callq('begin_move',pillShapes()).catch(()=>{carrying=false;moveHandle.classList.remove('armed');});
 });
-listen('move_end',()=>{ carrying=false; moveHandle.classList.remove('armed'); setHovered(null); reportHot(); }).catch(()=>{});
+listen('move_end',()=>{ carrying=false; moveHandle.classList.remove('armed'); setHovered(null); reportHot(); scheduleTuck(); }).catch(()=>{});
 listen('move_handle',e=>{ showMove=e.payload!==false; reportHot(); }).catch(()=>{});
 invoke('get_move_handle').then(v=>{ showMove=v!==false; reportHot(); }).catch(()=>{});
 
@@ -1167,6 +1244,50 @@ invoke('get_grok').then(u=>{grokSnap=u||grokSnap;renderRing();}).catch(()=>{});
 
 listen('antigravity',e=>{agSnap=e.payload||agSnap;settle('gemini');renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
 invoke('get_antigravity').then(u=>{agSnap=u||agSnap;renderRing();}).catch(()=>{});
+listen('geminiapp',e=>{gaSnap=e.payload||gaSnap;settle('geminiapp');renderRing();if(card.classList.contains('show'))renderCard();}).catch(()=>{});
+invoke('get_gemini_app').then(u=>{gaSnap=u||gaSnap;renderRing();}).catch(()=>{});
+
+/* ---- Auto-hide and the padlock -------------------------------------------
+   Auto-hide off (the padlock shut) is the notch as it always was. On, the pill tucks into the edge
+   once the pointer has been away for a moment, and comes back the instant the pointer reaches the
+   strip. It never tucks with the card open, mid-drag or while it is being carried. */
+const TUCK_AFTER=350;
+function applyAutoHide(on){
+  autoHide=!!on;
+  document.body.classList.toggle('autohide',autoHide);
+  const l=pill.querySelector('.lock'); if(l) l.title=autoHide?'Auto-hide on: click to keep the notch in place':'Fixed in place: click to auto-hide';
+  if(!autoHide){ clearTimeout(tuckTimer); setTucked(false); }
+  else scheduleTuck(900);
+  reportHot();
+}
+function setTucked(t){
+  if(t===tucked) return;
+  tucked=t;
+  if(t){ clearTimeout(hideTimer); card.classList.remove('show'); setHovered(null); }
+  document.body.classList.toggle('tucked',t);
+  // Measured once the slide has finished, so the strip (or the whole pill) is what gets reported
+  setTimeout(reportHot,260);
+}
+function reveal(){ clearTimeout(tuckTimer); setTucked(false); }
+function scheduleTuck(after){
+  if(!autoHide) return;
+  clearTimeout(tuckTimer);
+  tuckTimer=setTimeout(()=>{
+    if(!autoHide||dragging||carrying||press||card.classList.contains('show')) return;
+    setTucked(true);
+  },after||TUCK_AFTER);
+}
+pill.addEventListener('mousedown',e=>{
+  if(!e.target.closest('.lock')) return;
+  e.stopPropagation(); e.preventDefault(); // not a press on a ring: no refresh, no drag
+  if(e.button!==0) return;
+  invoke('set_autohide',{on:!autoHide}).then(applyAutoHide).catch(err=>notice('set_autohide failed: '+err));
+},true);
+listen('autohide',e=>applyAutoHide(e.payload===true)).catch(()=>{});
+invoke('get_autohide').then(v=>{ applyAutoHide(v===true); if(v===true) setTucked(true); }).catch(()=>{});
+function applyGlass(v){ document.body.dataset.glass=(v==='clear'||v==='solid')?v:'regular'; }
+listen('glass',e=>applyGlass(e.payload)).catch(()=>{});
+invoke('get_glass').then(applyGlass).catch(()=>{});
 invoke('get_notch_slots').then(v=>{if(Array.isArray(v)){notchSlots=v;renderRing();}}).catch(()=>{});
 listen('notch_slots',e=>{
   notchSlots=Array.isArray(e.payload)?e.payload:null;

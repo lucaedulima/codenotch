@@ -83,6 +83,28 @@ pub struct Config {
     /// false = no arc above the notch to carry it by. Nothing is lost: Appearance → Edge moves it too.
     #[serde(default = "yes")]
     pub show_move_handle: bool,
+    /// true = the pill tucks itself into the screen edge, leaving a thin strip that brings it back
+    /// under the pointer (the taskbar's auto-hide). false = it stays put, the original behaviour.
+    #[serde(default)]
+    pub notch_autohide: bool,
+    /// How much of the desktop the glass lets through: "clear", "regular" or "solid".
+    #[serde(default = "default_glass")]
+    pub glass: String,
+}
+
+/// The three glass thicknesses Settings offers; anything else reads as the default.
+pub const GLASS: [&str; 3] = ["clear", "regular", "solid"];
+
+fn default_glass() -> String {
+    "regular".into()
+}
+
+pub fn glass_or_regular(value: &str) -> String {
+    if GLASS.contains(&value) {
+        value.to_string()
+    } else {
+        default_glass()
+    }
 }
 
 fn default_notch_y() -> f64 {
@@ -162,6 +184,8 @@ impl Default for Config {
             notch_visible: true,
             tray_visible: true,
             show_move_handle: true,
+            notch_autohide: false,
+            glass: default_glass(),
         }
     }
 }

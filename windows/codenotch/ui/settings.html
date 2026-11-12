@@ -148,6 +148,10 @@
         <div class="group">
           <div class="item"><span>Show</span><span class="seg" id="seg-show"><button data-v="show">Always show</button><button data-v="hide">Hide</button></span></div>
           <div class="item cap" id="cap-show" data-dynamic></div>
+          <div class="item"><span>Behaviour</span><span class="seg" id="seg-hide"><button data-v="fixed">Fixed</button><button data-v="auto">Auto-hide</button></span></div>
+          <div class="item cap" id="cap-hide" data-dynamic></div>
+          <div class="item"><span>Glass</span><span class="seg" id="seg-glass"><button data-v="clear">Clear</button><button data-v="regular">Regular</button><button data-v="solid">Solid</button></span></div>
+          <div class="item cap" id="cap-glass" data-dynamic></div>
           <div class="item"><span>Size</span><span class="seg" id="seg-size"><button data-v="0.8">Small</button><button data-v="1">Medium</button><button data-v="1.25">Large</button></span></div>
           <div class="item cap" id="cap-size" data-dynamic></div>
           <div class="item"><span>Weekly ring</span><span class="seg" id="seg-weekly"><button data-v="off">Off</button><button data-v="inside">Inside</button><button data-v="outside">Outside</button></span></div>
@@ -795,8 +799,8 @@ document.getElementById('close').addEventListener('click', () => {
 });
 
 /* ---- providers ---------------------------------------------------------- */
-const ORDER = ['claude', 'codex', 'cursor', 'grok', 'gemini'];
-const FALLBACK_LABEL = { claude:'Claude', codex:'Codex', cursor:'Cursor', grok:'Grok', gemini:'Antigravity' };
+const ORDER = ['claude', 'codex', 'cursor', 'grok', 'gemini', 'geminiapp'];
+const FALLBACK_LABEL = { claude:'Claude', codex:'Codex', cursor:'Cursor', grok:'Grok', gemini:'Antigravity', geminiapp:'Gemini' };
 let options = [];      // [{id,label,status,used}] from get_tray_options
 let glyphs = {};       // id -> {kind:'svg'|'png'|'appicon', svg, url}
 function providerList(){
@@ -887,6 +891,10 @@ function accountBlock(p, isOn, locked){
     h += '<div class="acct-sub"><span>' + esc(ui('Notch reads', 'Notch reads')) + '</span>' + agSelect('limit', AG_LIMITS, agPrefs.limit) + '</div>'
       + '<div class="acct-sub"><span>' + esc(ui('Model data', 'Model data')) + '</span>' + agSelect('model', AG_MODELS, agPrefs.model) + '</div>';
   }
+  if(p.id === 'geminiapp'){
+    h += '<div class="acct-sub"><span>' + esc(p.status === 'needsAuth' ? 'Read from gemini.google.com/usage once you sign in' : 'Read from gemini.google.com/usage') + '</span>'
+      + '<button class="btn" data-gemini-sign-in>' + esc(p.status === 'needsAuth' ? 'Sign in' : 'Account') + '</button></div>';
+  }
   if(p.id === 'claude'){
     h += '<div class="acct-sub"><span>' + esc(ui('Let Claude Code notify Codenotch', 'Let Claude Code notify Codenotch')) + '</span>'
       + '<button class="switch' + (hooks.value ? ' on' : '') + '" role="switch" aria-checked="' + hooks.value + '" data-remote="hooks"'
@@ -935,6 +943,7 @@ accountsPane.addEventListener('click', e => {
   const np = e.target.closest('[data-np]');
   if(np){ toggleNotch(np.dataset.np); return; }
   if(e.target.closest('[data-remote="hooks"]')) hooks.toggle();
+  if(e.target.closest('[data-gemini-sign-in]')) invoke('gemini_sign_in').catch(err => strip('gemini_sign_in failed: ' + errText(err)));
 });
 accountsPane.addEventListener('change', e => {
   const box = e.target.closest('[data-ag]');
@@ -1133,6 +1142,48 @@ function renderWeekly(){
   const why = WEEKLY_WHY[weeklyRing] || '';
   document.getElementById('cap-weekly').textContent = ui(why, why);
 }
+/* ---- auto-hide and glass ----------------------------------------------- */
+const BEHAVIOUR_WHY = {
+  fixed: 'The notch stays on its edge. The padlock at the end of the pill switches this too.',
+  auto: 'The notch tucks into the edge and leaves a thin strip. Bring the pointer to the strip and it slides out; move away and it tucks back. Click the padlock to keep it out.'
+};
+const GLASS_WHY = {
+  clear: 'The most see-through. Reads best on dark wallpapers.',
+  regular: 'Smoked glass: the desktop shows through without getting in the way of the numbers.',
+  solid: 'Almost opaque, for light wallpapers or when legibility matters most.'
+};
+let autoHideOn = false, glassValue = 'regular';
+function renderHideGlass(){
+  for(const b of document.querySelectorAll('#seg-hide button')){
+    const on = (b.dataset.v === 'auto') === autoHideOn;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  for(const b of document.querySelectorAll('#seg-glass button')){
+    const on = b.dataset.v === glassValue;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  document.getElementById('cap-hide').textContent = BEHAVIOUR_WHY[autoHideOn ? 'auto' : 'fixed'];
+  document.getElementById('cap-glass').textContent = GLASS_WHY[glassValue] || '';
+}
+document.getElementById('seg-hide').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b) return;
+  const want = b.dataset.v === 'auto';
+  if(want === autoHideOn) return;
+  autoHideOn = want; renderHideGlass();
+  invoke('set_autohide', { on: want }).then(v => { autoHideOn = v === true; renderHideGlass(); toast(); })
+    .catch(err => strip('set_autohide failed: ' + errText(err)));
+});
+document.getElementById('seg-glass').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(!b || b.dataset.v === glassValue) return;
+  glassValue = b.dataset.v; renderHideGlass();
+  invoke('set_glass', { value: glassValue }).then(v => { glassValue = v; renderHideGlass(); toast(); })
+    .catch(err => strip('set_glass failed: ' + errText(err)));
+});
+try { window.__TAURI__.event.listen('autohide', e => { autoHideOn = e.payload === true; renderHideGlass(); }); } catch(e) {}
+try { window.__TAURI__.event.listen('glass', e => { if(typeof e.payload === 'string'){ glassValue = e.payload; renderHideGlass(); } }); } catch(e) {}
+invoke('get_autohide').then(v => { autoHideOn = v === true; renderHideGlass(); }).catch(() => {});
+invoke('get_glass').then(v => { if(typeof v === 'string') glassValue = v; renderHideGlass(); }).catch(() => {});
+
 document.getElementById('seg-weekly').addEventListener('click', e => {
   const b = e.target.closest('button');
   if(!b || b.disabled || b.dataset.v === weeklyRing) return;

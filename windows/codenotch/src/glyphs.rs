@@ -26,15 +26,17 @@ pub struct Glyph {
     pub source: String,
 }
 
-pub const IDS: [&str; 5] = ["claude", "codex", "cursor", "grok", "gemini"];
+pub const IDS: [&str; 6] = ["claude", "codex", "cursor", "grok", "gemini", "geminiapp"];
 
 /// Built-in artwork (@lobehub/icons-static-svg, MIT): the OpenAI mark for codex (matching upstream's glyph choice), the Antigravity mark for gemini
-const BUILTIN: [(&str, &str); 5] = [
+const BUILTIN: [(&str, &str); 6] = [
     ("claude", include_str!("../glyphs/claude.svg")),
     ("codex", include_str!("../glyphs/codex.svg")),
     ("cursor", include_str!("../glyphs/cursor.svg")),
     ("grok", include_str!("../glyphs/grok.svg")),
     ("gemini", include_str!("../glyphs/gemini.svg")),
+    // The Gemini app's ring: the Gemini spark, not Antigravity's mark
+    ("geminiapp", include_str!("../glyphs/gemini-alt.svg")),
 ];
 
 /// Minimal SVG sanitising before inlining into the DOM: drop <script> blocks and on*="…" event

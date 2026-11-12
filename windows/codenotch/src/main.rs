@@ -14,6 +14,7 @@ mod traymenu;
 mod usage;
 mod codex;
 mod cursor;
+pub(crate) mod geminiapp;
 mod grok;
 mod antigravity;
 mod agy_cli;
@@ -48,6 +49,8 @@ pub struct AppState {
     /// Grok Build credits, read from the Grok CLI's own session
     pub grok: Mutex<usage::UsageSnapshot>,
     pub antigravity: Mutex<usage::UsageSnapshot>,
+    /// The Gemini app's own usage page (gemini.google.com/usage), read in a WebView of our own
+    pub gemini_app: Mutex<usage::UsageSnapshot>,
     /// Provider glyph cache, collected at launch and again on a tray refresh
     pub glyphs: Mutex<std::collections::HashMap<String, glyphs::Glyph>>,
     /// Working state of the non-Claude providers (Cursor reports it; Codex and Antigravity are inferred from recent writes)
@@ -574,6 +577,12 @@ pub(crate) fn refresh_provider(app: &AppHandle, provider: &str) -> bool {
         "cursor" => cursor::request_refresh(),
         "grok" => grok::request_refresh(),
         "gemini" => antigravity::request_refresh(),
+        "geminiapp" => {
+            if app.state::<AppState>().gemini_app.lock().unwrap().status == "needsAuth" {
+                return false;
+            }
+            geminiapp::request_refresh();
+        }
         _ => return false,
     }
     true
@@ -590,12 +599,26 @@ pub(crate) fn refresh_all(app: &AppHandle) {
 /// A click on a ring refetches that provider, as on the Mac.
 #[tauri::command]
 fn refresh_ring(app: AppHandle, provider: String) -> bool {
+    // Signed out, a click on the Gemini ring is the way to sign in
+    if provider == "geminiapp" {
+        return geminiapp::ring_clicked(&app);
+    }
     refresh_provider(&app, &provider)
 }
 
 #[tauri::command]
 fn get_antigravity(state: tauri::State<AppState>) -> usage::UsageSnapshot {
     state.antigravity.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_gemini_app(state: tauri::State<AppState>) -> usage::UsageSnapshot {
+    state.gemini_app.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn gemini_sign_in(app: AppHandle) {
+    geminiapp::sign_in(&app);
 }
 
 #[tauri::command]
@@ -653,6 +676,7 @@ pub(crate) fn provider_page(provider: &str) -> Option<(&'static str, &'static st
         "cursor" => ("https://cursor.com/dashboard", "cursor.com"),
         "grok" => ("https://grok.com/?_s=usage", "grok.com"),
         "gemini" => ("https://antigravity.google", "antigravity.google"),
+        "geminiapp" => (geminiapp::USAGE_URL, "gemini.google.com"),
         _ => return None,
     })
 }
@@ -683,10 +707,12 @@ static HOT: Mutex<Vec<[f64; 4]>> = Mutex::new(Vec::new());
 static EXPANDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[tauri::command]
-fn set_hot(rects: Vec<[f64; 4]>, expanded: bool) {
+fn set_hot(rects: Vec<[f64; 4]>, expanded: bool, card: Option<bool>) {
     *HOT.lock().unwrap() = rects;
+    // `expanded` asks for pointer_left (the card is up, or an auto-hidden pill is out); `card` is
+    // only the card, which is what the Antigravity hover refresh is for
     EXPANDED.store(expanded, std::sync::atomic::Ordering::Relaxed);
-    if expanded {
+    if card.unwrap_or(expanded) {
         antigravity::request_hover_refresh();
     }
 }
@@ -992,6 +1018,7 @@ fn ring_window<'a>(
         "codex" => windows.first(),
         "cursor" => by_id("included").or_else(|| by_id("api")),
         "grok" => by_id("credits").or_else(|| windows.first()),
+        "geminiapp" => by_id("session").or_else(|| by_id("weekly")),
         _ => antigravity_lane(windows, antigravity_limit, antigravity_model),
     }
 }
@@ -1047,6 +1074,7 @@ pub(crate) fn snapshot_of(app: &AppHandle, id: &str) -> usage::UsageSnapshot {
         "cursor" => st.cursor.lock().unwrap().clone(),
         "grok" => st.grok.lock().unwrap().clone(),
         "gemini" => st.antigravity.lock().unwrap().clone(),
+        "geminiapp" => st.gemini_app.lock().unwrap().clone(),
         _ => st.usage.lock().unwrap().clone(),
     }
 }
@@ -1301,6 +1329,51 @@ fn set_notch_edge(app: AppHandle, edge: String) -> String {
 }
 
 #[tauri::command]
+fn get_autohide(app: AppHandle) -> bool {
+    let st = app.state::<AppState>();
+    let c = st.cfg.lock().unwrap();
+    c.notch_autohide
+}
+
+#[tauri::command]
+fn set_autohide(app: AppHandle, on: bool) -> bool {
+    set_autohide_to(&app, on)
+}
+
+/// Shared by the command, the notch menu and the padlock on the pill.
+pub(crate) fn set_autohide_to(app: &AppHandle, on: bool) -> bool {
+    {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.notch_autohide = on;
+        config::save(&c);
+    }
+    applog(&format!("notch auto-hide {}", if on { "on" } else { "off" }));
+    let _ = app.emit("autohide", on);
+    on
+}
+
+#[tauri::command]
+fn get_glass(app: AppHandle) -> String {
+    let st = app.state::<AppState>();
+    let c = st.cfg.lock().unwrap();
+    config::glass_or_regular(&c.glass)
+}
+
+#[tauri::command]
+fn set_glass(app: AppHandle, value: String) -> String {
+    let value = config::glass_or_regular(&value);
+    {
+        let st = app.state::<AppState>();
+        let mut c = st.cfg.lock().unwrap();
+        c.glass = value.clone();
+        config::save(&c);
+    }
+    let _ = app.emit("glass", &value);
+    value
+}
+
+#[tauri::command]
 fn get_move_handle(app: AppHandle) -> bool {
     let st = app.state::<AppState>();
     let c = st.cfg.lock().unwrap();
@@ -1384,12 +1457,13 @@ pub fn provider_label(id: &str) -> &'static str {
         "cursor" => "Cursor",
         "grok" => "Grok",
         "gemini" => "Antigravity",
+        "geminiapp" => "Gemini",
         _ => "Claude",
     }
 }
 
 /// Every provider the tray menu can offer, in the order the notch shows them.
-pub const TRAY_PROVIDER_IDS: [&str; 5] = ["claude", "codex", "cursor", "grok", "gemini"];
+pub const TRAY_PROVIDER_IDS: [&str; 6] = ["claude", "codex", "cursor", "grok", "gemini", "geminiapp"];
 
 /// Keeps the tray menu current. macOS rebuilds its menu as it opens; Tauri has no such hook, so it
 /// is rebuilt whenever a reading changes, and once a minute besides — otherwise "Resets in 12 min"
@@ -1532,6 +1606,7 @@ fn main() {
             cursor: Mutex::new(cursor::load_persisted()),
             grok: Mutex::new(grok::load_persisted()),
             antigravity: Mutex::new(antigravity::load_persisted()),
+            gemini_app: Mutex::new(geminiapp::load_persisted()),
             glyphs: Mutex::new(Default::default()),
             activity: Mutex::new(Vec::new()),
         })
@@ -1542,6 +1617,12 @@ fn main() {
             get_cursor,
             get_grok,
             get_antigravity,
+            get_gemini_app,
+            gemini_sign_in,
+            get_autohide,
+            set_autohide,
+            get_glass,
+            set_glass,
             get_glyphs,
             get_activity,
             open_data_dir,
@@ -1605,6 +1686,7 @@ fn main() {
             cursor::start(handle.clone());
             grok::start(handle.clone());
             antigravity::start(handle.clone());
+            geminiapp::start(handle.clone());
             activity::start(handle.clone());
             // Collecting glyphs may read icon resources out of a few executables; do it off the main thread and push when done
             let gh = handle.clone();

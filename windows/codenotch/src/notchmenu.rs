@@ -2,7 +2,7 @@
 //! usage page: a left click used to open it, and a left click now refreshes the ring instead.
 
 use crate::i18n::tr;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder};
 use tauri::{AppHandle, Manager, Window};
 
 /// Tauri hands every menu event to every handler, the tray's included, so these ids carry their own
@@ -37,6 +37,29 @@ pub fn show_notch_menu(window: Window, provider: Option<String>) -> Result<(), S
         .map_err(err)?;
         menu = menu.item(&open);
     }
+    // The padlock on the pill does the same; here for whoever looks for it in the menu first
+    let autohide = {
+        let st = app.state::<crate::AppState>();
+        let on = st.cfg.lock().unwrap().notch_autohide;
+        on
+    };
+    let hide = CheckMenuItemBuilder::with_id(format!("{PREFIX}autohide"), "Auto-hide")
+        .checked(autohide)
+        .build(app)
+        .map_err(err)?;
+    menu = menu.separator().item(&hide);
+    let gemini = {
+        let st = app.state::<crate::AppState>();
+        let s = st.gemini_app.lock().unwrap().status.clone();
+        s
+    };
+    let sign = MenuItemBuilder::with_id(
+        format!("{PREFIX}gemini_sign_in"),
+        if gemini == "needsAuth" { "Sign in to Gemini…" } else { "Gemini account…" },
+    )
+    .build(app)
+    .map_err(err)?;
+    menu = menu.item(&sign);
     let quit = MenuItemBuilder::with_id(format!("{PREFIX}quit"), tr(&lang, "quit_app"))
         .build(app)
         .map_err(err)?;
@@ -83,6 +106,11 @@ fn handle(app: &AppHandle, id: &str) {
     }
     match item {
         "refresh" => crate::refresh_all(app),
+        "autohide" => {
+            let on = !app.state::<crate::AppState>().cfg.lock().unwrap().notch_autohide;
+            crate::set_autohide_to(app, on);
+        }
+        "gemini_sign_in" => crate::geminiapp::sign_in(app),
         "quit" => app.exit(0),
         _ => {}
     }
