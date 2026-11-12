@@ -1130,9 +1130,10 @@ function pointerInHot(x,y){
 let hideLogged=0;
 document.addEventListener('mousemove',e=>{
   if(dragging)return; // no card while dragging
-  // Tucked: the window only takes the pointer on the strip (Rust gates click-through), so any move is the pointer arriving
-  if(tucked){ reveal(); return; }
-  if(autoHide&&pointerInHot(e.clientX,e.clientY)) clearTimeout(tuckTimer);
+  // Tucked: the window only takes the pointer around the strip (Rust gates click-through); whether
+  // it is coming for the notch or only passing over is for `armReveal` to tell
+  if(tucked){ armReveal(e.clientX,e.clientY); return; }
+  if(autoHide&&pointerInHot(e.clientX,e.clientY)) cancelTuck();
   if(carrying) return; // the notch is in hand; the card would only be in the way
   setHovered(onHandle(e.clientX,e.clientY));
   if(hovered){ if(card.classList.contains('show')){ clearTimeout(hideTimer); hideCard(); } return; }
@@ -1305,30 +1306,58 @@ invoke('get_gemini_app').then(u=>{gaSnap=u||gaSnap;renderRing();}).catch(()=>{})
 
 /* ---- Auto-hide and the padlock -------------------------------------------
    Auto-hide off (the padlock shut) is the notch as it always was. On, the pill tucks into the edge
-   once the pointer has been away for a moment, and comes back the instant the pointer reaches the
-   strip. It never tucks with the card open, mid-drag or while it is being carried. */
+   once the pointer has been away for a moment, and comes back when the pointer rests on the strip.
+   It never tucks with the card open, mid-drag or while it is being carried. */
 const TUCK_AFTER=350;
+/* Resting, not touching: on the top edge the strip sits right where a browser's tabs are, so a
+   pointer only passing over it on the way to a tab brought the whole notch out every time — which
+   reads as a notch that never hides. A click on the strip still brings it out at once. */
+const REVEAL_AFTER=180;
+/* The slide is .34 s (the #pill transition); the hot rectangles are measured once it has ended */
+const SLIDE_MS=380;
+let revealTimer=null, revealAt=null;
 function applyAutoHide(on){
   autoHide=!!on;
   document.body.classList.toggle('autohide',autoHide);
   const l=pill.querySelector('.lock'); if(l) l.title=autoHide?'Auto-hide on: click to keep the notch in place':'Fixed in place: click to auto-hide';
-  if(!autoHide){ clearTimeout(tuckTimer); setTucked(false); }
+  if(!autoHide){ cancelTuck(); setTucked(false); }
   else scheduleTuck(900);
   reportHot();
 }
 function setTucked(t){
   if(t===tucked) return;
   tucked=t;
+  cancelReveal();
   if(t){ clearTimeout(hideTimer); card.classList.remove('show'); setHovered(null); }
   document.body.classList.toggle('tucked',t);
   // Measured once the slide has finished, so the strip (or the whole pill) is what gets reported
-  setTimeout(reportHot,260);
+  setTimeout(reportHot,SLIDE_MS);
 }
-function reveal(){ clearTimeout(tuckTimer); setTucked(false); }
+function reveal(){ cancelTuck(); setTucked(false); }
+function cancelTuck(){ clearTimeout(tuckTimer); tuckTimer=null; }
+function cancelReveal(){ clearTimeout(revealTimer); revealTimer=null; }
+/* Near the strip: what is left of the pill on screen, with the same slack Rust gives it */
+function nearStrip(x,y){ return inRect(x,y,pill.getBoundingClientRect(),12); }
+function armReveal(x,y){
+  revealAt={x,y};
+  if(!nearStrip(x,y)){ cancelReveal(); return; } // the window still had the pointer, but it moved on
+  if(revealTimer) return;
+  revealTimer=setTimeout(()=>{
+    revealTimer=null;
+    if(tucked&&revealAt&&nearStrip(revealAt.x,revealAt.y)) reveal();
+  },REVEAL_AFTER);
+}
+document.addEventListener('mousedown',e=>{ if(tucked&&e.button===0){ e.stopPropagation(); reveal(); } },true);
+document.addEventListener('mouseout',e=>{ if(tucked&&!e.relatedTarget){ revealAt=null; cancelReveal(); } });
+/* A timer that is already counting is left to finish. Rust repeats pointer_left every ~300 ms while
+   an auto-hidden pill is out and the pointer is away, and each one restarted this 350 ms count from
+   zero — a race the tuck could lose for as long as the pointer stayed away. */
 function scheduleTuck(after){
   if(!autoHide) return;
-  clearTimeout(tuckTimer);
+  if(tuckTimer&&!after) return;
+  cancelTuck();
   tuckTimer=setTimeout(()=>{
+    tuckTimer=null;
     if(!autoHide||dragging||carrying||press||card.classList.contains('show')) return;
     setTucked(true);
   },after||TUCK_AFTER);
