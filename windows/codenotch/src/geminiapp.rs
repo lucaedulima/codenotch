@@ -272,12 +272,127 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-const SESSION_WORDS: [&str; 9] =
-    ["5 hour", "5-hour", "five hour", "five-hour", "5 horas", "cinco horas", "5h", "5 h ", "hourly"];
+/// The five-hour window's heading. The Portuguese page does not say "5 horas" at all: it calls it
+/// "Uso atual" (current usage), with "Limite semanal" for the week below it. Not a bare "atual",
+/// which would also match the "Atualizado agora" the page prints above everything.
+const SESSION_WORDS: [&str; 14] = [
+    "5 hour", "5-hour", "five hour", "five-hour", "5 horas", "cinco horas", "5h", "5 h ", "hourly",
+    " uso atual ", "limite atual", "current usage", "current limit", "current use",
+];
 const WEEKLY_WORDS: [&str; 4] = ["week", "semana", "semanal", "7 dias"];
 const REMAINING_WORDS: [&str; 7] = ["remaining", "left", "restante", "restam", "resta", "disponível", "disponivel"];
-const USED_WORDS: [&str; 4] = ["used", "usado", "utilizado", "consumido"];
+const USED_WORDS: [&str; 5] = ["used", "usado", "usada", "utilizado", "consumido"];
 const RESET_WORDS: [&str; 6] = ["reset", "renova", "redefin", "reinicia", "reabastec", "refresh"];
+
+/// A clock time on a line — "0:55", "23:55", "12:55 PM" — as 24-hour (hour, minute).
+fn clock_in(line: &str) -> Option<(u32, u32)> {
+    let b: Vec<char> = line.chars().collect();
+    for i in 0..b.len() {
+        if b[i] != ':' {
+            continue;
+        }
+        let mut j = i;
+        while j > 0 && b[j - 1].is_ascii_digit() && i - j < 2 {
+            j -= 1;
+        }
+        if j == i || (j > 0 && b[j - 1].is_ascii_digit()) {
+            continue;
+        }
+        if i + 2 >= b.len() || !b[i + 1].is_ascii_digit() || !b[i + 2].is_ascii_digit() {
+            continue;
+        }
+        if b.get(i + 3).is_some_and(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let (Ok(h), Ok(m)) = (
+            b[j..i].iter().collect::<String>().parse::<u32>(),
+            b[i + 1..i + 3].iter().collect::<String>().parse::<u32>(),
+        ) else {
+            continue;
+        };
+        let after: String = b[i + 3..].iter().take(5).collect::<String>().to_lowercase();
+        let after = after.trim_start();
+        let h = if after.starts_with("pm") && h < 12 {
+            h + 12
+        } else if after.starts_with("am") && h == 12 {
+            0
+        } else {
+            h
+        };
+        if h < 24 && m < 60 {
+            return Some((h, m));
+        }
+    }
+    None
+}
+
+/// Month words, Portuguese and English, abbreviated and in full, as the page prints them ("17 de
+/// nov.", "Nov 17"). Matched whole, never as a prefix: "mais" is not May.
+const MONTHS: [(&str, u32); 44] = [
+    ("jan", 1), ("janeiro", 1), ("january", 1),
+    ("fev", 2), ("feb", 2), ("fevereiro", 2), ("february", 2),
+    ("mar", 3), ("março", 3), ("marco", 3), ("march", 3),
+    ("abr", 4), ("apr", 4), ("abril", 4), ("april", 4),
+    ("mai", 5), ("may", 5), ("maio", 5),
+    ("jun", 6), ("junho", 6), ("june", 6),
+    ("jul", 7), ("julho", 7), ("july", 7),
+    ("ago", 8), ("aug", 8), ("agosto", 8), ("august", 8),
+    ("set", 9), ("sep", 9), ("sept", 9), ("setembro", 9), ("september", 9),
+    ("out", 10), ("oct", 10), ("outubro", 10), ("october", 10),
+    ("nov", 11), ("novembro", 11), ("november", 11),
+    ("dez", 12), ("dec", 12), ("dezembro", 12), ("december", 12),
+];
+
+/// A calendar day on a line, as (month, day). Only a month word with a day number right beside it
+/// counts — "17 de nov", "17 nov", "nov 17" — so "out of", "mais" or "2 hours ago" never read as dates.
+fn date_in(line: &str) -> Option<(u32, u32)> {
+    let words: Vec<String> = line
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect();
+    let day = |w: Option<&String>| w.and_then(|w| w.parse::<u32>().ok()).filter(|d| (1..=31).contains(d));
+    for (k, w) in words.iter().enumerate() {
+        let Some(&(_, month)) = MONTHS.iter().find(|(name, _)| *name == w.as_str()) else { continue };
+        let before = k.checked_sub(1).and_then(|j| words.get(j));
+        let before2 = k.checked_sub(2).and_then(|j| words.get(j));
+        let found = day(before)
+            .or_else(|| if before.map(|s| s.as_str()) == Some("de") { day(before2) } else { None })
+            .or_else(|| day(words.get(k + 1)));
+        if let Some(d) = found {
+            return Some((month, d));
+        }
+    }
+    None
+}
+
+/// The moment a reset line names, in epoch ms: a clock time alone is its next occurrence (today, or
+/// tomorrow once it has passed), and a day with it is that day this year, or next year's once it is
+/// more than a day behind. Local time, because that is the clock the page wrote it in.
+fn reset_at(line: &str, now: chrono::DateTime<chrono::Local>) -> Option<u64> {
+    use chrono::{Datelike, TimeZone};
+    let (h, m) = clock_in(line)?;
+    let at = match date_in(line) {
+        Some((month, d)) => {
+            let on = |y: i32| chrono::Local.with_ymd_and_hms(y, month, d, h, m, 0).earliest();
+            let t = on(now.year())?;
+            if t < now - chrono::Duration::days(1) {
+                on(now.year() + 1)?
+            } else {
+                t
+            }
+        }
+        None => {
+            let t = chrono::Local.from_local_datetime(&now.date_naive().and_hms_opt(h, m, 0)?).earliest()?;
+            if t <= now {
+                t + chrono::Duration::days(1)
+            } else {
+                t
+            }
+        }
+    };
+    u64::try_from(at.timestamp_millis()).ok()
+}
 
 /// The first percentage on a line, as a fraction.
 fn first_pct(line: &str) -> Option<f64> {
@@ -311,8 +426,13 @@ fn has_any(text: &str, words: &[&str]) -> bool {
     words.iter().any(|w| text.contains(w))
 }
 
-/// The page's text → the two windows, and a note carrying the reset wording Google printed.
+/// The page's text → the two windows, and a note carrying any reset wording that could not be read
+/// as a moment (one that could becomes the window's own `resets_at`).
 pub fn parse(text: &str) -> Option<(Vec<LimitWindow>, String)> {
+    parse_at(text, chrono::Local::now())
+}
+
+fn parse_at(text: &str, now: chrono::DateTime<chrono::Local>) -> Option<(Vec<LimitWindow>, String)> {
     let lines: Vec<String> = text.lines().map(|l| l.trim().to_lowercase()).filter(|l| !l.is_empty()).collect();
     let mut session: Option<(f64, Option<String>)> = None;
     let mut weekly: Option<(f64, Option<String>)> = None;
@@ -347,10 +467,14 @@ pub fn parse(text: &str) -> Option<(Vec<LimitWindow>, String)> {
             _ => loose.push(entry),
         }
     }
-    // Nothing labelled: the page lists the five-hour window first and the week second
+    // Unlabelled figures fill whichever window is still missing, in page order: the page lists the
+    // five-hour window first and the week second. A figure is never dropped just because its heading
+    // was not recognised — that is how a maxed-out "Uso atual" went missing while the week showed.
     let mut loose = loose.into_iter();
-    if session.is_none() && weekly.is_none() {
+    if session.is_none() {
         session = loose.next();
+    }
+    if weekly.is_none() {
         weekly = loose.next();
     }
     if session.is_none() && weekly.is_none() {
@@ -360,16 +484,19 @@ pub fn parse(text: &str) -> Option<(Vec<LimitWindow>, String)> {
     let mut notes = Vec::new();
     for (id, label, w) in [("session", "5-Hour Limit", session), ("weekly", "Weekly limit", weekly)] {
         if let Some((used, reset)) = w {
+            let resets_at = reset.as_deref().and_then(|r| reset_at(r, now));
             windows.push(LimitWindow {
                 id: id.into(),
                 label: label.into(),
                 used,
-                resets_at: None,
+                resets_at,
                 count: None,
                 derived: false,
                 group: None,
             });
-            if let Some(r) = reset {
+            // Wording that became a moment is shown by the card as "Resets at …"; only what could
+            // not be read that way stays as a note
+            if let (None, Some(r)) = (resets_at, reset) {
                 if !notes.contains(&r) {
                     notes.push(r);
                 }
@@ -460,6 +587,51 @@ mod tests {
         let (ws, _) = parse(t).unwrap();
         assert_eq!(used(&ws, "session"), Some(30.0));
         assert_eq!(used(&ws, "weekly"), Some(5.0));
+    }
+
+    /// The page as it really reads in Portuguese (November 2026): the five-hour window is headed
+    /// "Uso atual", never "5 horas", and both resets are printed as clock times, the week with a day.
+    const PT_PAGE: &str = "Gemini\nLimites de uso\nPRO\n\nOs limites do seu plano determinam quanto você pode usar o Gemini ao longo do tempo. Modelos e recursos avançados podem consumir mais desse limite. Saiba mais\n\nAtualizado agora\n\nUso atual\ninfo\nQuantidade usada: 100%\n0:55: o limite de uso é redefinido\nLimite semanal\n17 de nov., 23:55: o limite de uso é redefinido\nQuantidade usada: 6%\nAumente o limite de uso em 5x com o AI Ultra\nR$ 779,90/mês";
+
+    fn at(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> chrono::DateTime<chrono::Local> {
+        use chrono::TimeZone;
+        chrono::Local.with_ymd_and_hms(y, mo, d, h, mi, 0).earliest().unwrap()
+    }
+
+    #[test]
+    fn current_usage_is_the_five_hour_window() {
+        let now = at(2026, 11, 11, 23, 57);
+        let (ws, note) = parse_at(PT_PAGE, now).unwrap();
+        assert_eq!(used(&ws, "session"), Some(100.0));
+        assert_eq!(used(&ws, "weekly"), Some(6.0));
+        let resets = |id: &str| ws.iter().find(|w| w.id == id).and_then(|w| w.resets_at);
+        // 0:55 has passed today, so it is tomorrow's; the week names its own day
+        assert_eq!(resets("session"), Some(at(2026, 11, 12, 0, 55).timestamp_millis() as u64));
+        assert_eq!(resets("weekly"), Some(at(2026, 11, 17, 23, 55).timestamp_millis() as u64));
+        // Both resets became moments, so no wording is left over for the note
+        assert!(note.is_empty(), "{note}");
+    }
+
+    #[test]
+    fn an_unrecognised_heading_still_fills_the_missing_window() {
+        let (ws, _) = parse("Algo novo\n80%\nLimite semanal\n10%").unwrap();
+        assert_eq!(used(&ws, "session"), Some(80.0));
+        assert_eq!(used(&ws, "weekly"), Some(10.0));
+    }
+
+    #[test]
+    fn reset_times() {
+        let now = at(2026, 11, 11, 23, 57);
+        assert_eq!(clock_in("0:55: o limite"), Some((0, 55)));
+        assert_eq!(clock_in("resets at 12:55 pm"), Some((12, 55)));
+        assert_eq!(clock_in("resets at 12:05 am"), Some((0, 5)));
+        assert_eq!(clock_in("r$ 779,90/mês"), None);
+        assert_eq!(date_in("17 de nov., 23:55"), Some((11, 17)));
+        assert_eq!(date_in("resets nov 17 at 11:55 pm"), Some((11, 17)));
+        assert_eq!(date_in("mais 2 hours ago out of 5"), None);
+        // A day already more than a day behind belongs to next year
+        assert_eq!(reset_at("2 de jan., 10:00", now), Some(at(2027, 1, 2, 10, 0).timestamp_millis() as u64));
+        assert_eq!(reset_at("redefinido em breve", now), None);
     }
 
     #[test]
